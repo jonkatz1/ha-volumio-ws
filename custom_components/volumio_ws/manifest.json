@@ -1,0 +1,14 @@
+{
+  "domain": "volumio_ws",
+  "name": "Volumio WebSocket",
+  "codeowners": ["@jkatz"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/jkatz/ha-volumio-ws",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/jkatz/ha-volumio-ws/issues",
+  "requirements": ["python-socketio[asyncio_client]>=5.11.0"],
+  "version": "0.1.0",
+  "zeroconf": ["_Volumio._tcp.local."]
+}

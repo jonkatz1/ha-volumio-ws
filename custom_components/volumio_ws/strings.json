@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Volumio",
+        "description": "Enter the IP address and port of your Volumio device.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "name": "Device Name"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to Volumio. Check the IP address and port."
+    },
+    "abort": {
+      "already_configured": "This Volumio device is already configured."
+    }
+  }
+}
