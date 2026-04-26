@@ -43,7 +43,7 @@ class VolumioWSConfigFlow(ConfigFlow, domain=DOMAIN):
             # Test connection
             try:
                 sio = socketio.AsyncClient()
-                await sio.connect(f"http://{host}:{port}", wait_timeout=10)
+                await sio.connect(f"http://{host}:{port}", wait_timeout=10, transports=["websocket"])
                 await sio.disconnect()
             except Exception:
                 errors["base"] = "cannot_connect"

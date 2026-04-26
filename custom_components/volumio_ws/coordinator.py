@@ -182,7 +182,7 @@ class VolumioWebSocketCoordinator:
                 future.set_result(data)
 
         try:
-            await self._sio.connect(self.base_url)
+            await self._sio.connect(self.base_url, transports=["websocket"])
         except Exception as err:
             _LOGGER.error("Failed to connect to Volumio at %s: %s", self.base_url, err)
             raise
