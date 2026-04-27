@@ -3,8 +3,6 @@
 DOMAIN = "volumio_ws"
 
 # Config
-CONF_HOST = "host"
-CONF_PORT = "port"
 CONF_NAME = "name"
 
 # Defaults

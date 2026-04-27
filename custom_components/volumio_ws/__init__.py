@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
+from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN, CONF_HOST, CONF_PORT, CONF_NAME, DEFAULT_PORT, DEFAULT_NAME
+from .const import DOMAIN, CONF_NAME, DEFAULT_PORT, DEFAULT_NAME
 from .coordinator import VolumioWebSocketCoordinator
 
 _LOGGER = logging.getLogger(__name__)

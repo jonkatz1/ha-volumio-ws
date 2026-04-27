@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant, callback
 from .const import (
     DOMAIN,
     WS_GET_STATE,
+    WS_GET_BROWSE_SOURCES,
     WS_PUSH_STATE,
     WS_PUSH_QUEUE,
     WS_PUSH_BROWSE_LIBRARY,
@@ -162,6 +163,10 @@ class VolumioWebSocketCoordinator:
         @self._sio.on(WS_PUSH_BROWSE_SOURCES)
         async def on_push_browse_sources(data):
             self._browse_sources = data if isinstance(data, list) else []
+            # Resolve pending future if someone is awaiting this
+            future = self._pending_responses.pop("getBrowseSources", None)
+            if future and not future.done():
+                future.set_result(self._browse_sources)
 
         @self._sio.on(WS_PUSH_MULTI_ROOM)
         async def on_push_multiroom(data):
@@ -227,6 +232,20 @@ class VolumioWebSocketCoordinator:
             {"uri": uri} if uri else None,
             response_key="browseLibrary",
         )
+
+    async def async_get_browse_sources(self) -> list[dict[str, Any]]:
+        """Get top-level browse sources from Volumio.
+
+        Returns the list of sources (Qobuz, local library, etc.).
+        """
+        result = await self.async_emit_and_wait(
+            WS_GET_BROWSE_SOURCES,
+            response_key="getBrowseSources",
+        )
+        if result is None:
+            _LOGGER.warning("No response from getBrowseSources, using cached data")
+            return self._browse_sources
+        return result
 
     async def async_search(self, query: str) -> dict[str, Any] | None:
         """Search the library."""

@@ -49,22 +49,46 @@ async def async_browse_media(
 
 
 async def _async_browse_root(coordinator: VolumioWebSocketCoordinator) -> BrowseMedia:
-    """Build the root browse tree."""
-    response = await coordinator.async_browse("")
+    """Build the root browse tree from Volumio's browse sources."""
+    sources = await coordinator.async_get_browse_sources()
 
-    if response is None:
-        # Fallback: return empty root
-        return BrowseMedia(
-            media_class=MediaClass.DIRECTORY,
-            media_content_id="",
-            media_content_type="library",
-            title="Volumio",
-            can_play=False,
-            can_expand=True,
-            children=[],
+    children: list[BrowseMedia] = []
+    for source in sources:
+        source_name = source.get("name", "Unknown")
+        source_uri = source.get("uri", "")
+
+        if not source_uri:
+            _LOGGER.debug("Skipping browse source with no URI: %s", source_name)
+            continue
+
+        # Resolve album art — sources use "albumart" or "icon"
+        thumbnail = coordinator.resolve_albumart(
+            source.get("albumart", source.get("icon"))
         )
 
-    return _parse_browse_response(coordinator, response, "")
+        child = BrowseMedia(
+            media_class=MediaClass.DIRECTORY,
+            media_content_id=source_uri,
+            media_content_type="library",
+            title=source_name,
+            can_play=False,
+            can_expand=True,
+            thumbnail=thumbnail,
+        )
+        children.append(child)
+
+    if not children:
+        _LOGGER.warning("getBrowseSources returned no usable sources")
+
+    return BrowseMedia(
+        media_class=MediaClass.DIRECTORY,
+        media_content_id="",
+        media_content_type="library",
+        title="Volumio",
+        can_play=False,
+        can_expand=True,
+        children=children,
+    )
 
 
 def _parse_browse_response(

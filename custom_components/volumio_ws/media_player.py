@@ -15,6 +15,7 @@ from homeassistant.components.media_player import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util.dt import utcnow
 
 from .const import (
     DOMAIN,
@@ -72,19 +73,17 @@ class VolumioMediaPlayer(MediaPlayerEntity):
             "sw_version": None,  # TODO: get from device info
         }
         self._unregister_listener: callable | None = None
+        self._media_position_updated_at = None
 
     @property
     def supported_features(self) -> MediaPlayerEntityFeature:
         """Return supported features."""
-        return (
+        features = (
             MediaPlayerEntityFeature.PLAY
             | MediaPlayerEntityFeature.PAUSE
             | MediaPlayerEntityFeature.STOP
             | MediaPlayerEntityFeature.NEXT_TRACK
             | MediaPlayerEntityFeature.PREVIOUS_TRACK
-            | MediaPlayerEntityFeature.VOLUME_SET
-            | MediaPlayerEntityFeature.VOLUME_MUTE
-            | MediaPlayerEntityFeature.VOLUME_STEP
             | MediaPlayerEntityFeature.SEEK
             | MediaPlayerEntityFeature.SHUFFLE_SET
             | MediaPlayerEntityFeature.REPEAT_SET
@@ -94,6 +93,15 @@ class VolumioMediaPlayer(MediaPlayerEntity):
             | MediaPlayerEntityFeature.TURN_ON
             | MediaPlayerEntityFeature.TURN_OFF
         )
+
+        if not self.coordinator.state.get("disableVolumeControl"):
+            features |= (
+                MediaPlayerEntityFeature.VOLUME_SET
+                | MediaPlayerEntityFeature.VOLUME_MUTE
+                | MediaPlayerEntityFeature.VOLUME_STEP
+            )
+
+        return features
 
     @property
     def available(self) -> bool:
@@ -167,6 +175,11 @@ class VolumioMediaPlayer(MediaPlayerEntity):
         if seek is not None:
             return seek // 1000  # Volumio reports in milliseconds
         return None
+
+    @property
+    def media_position_updated_at(self):
+        """Return when the position was last updated."""
+        return self._media_position_updated_at
 
     @property
     def shuffle(self) -> bool | None:
@@ -247,15 +260,19 @@ class VolumioMediaPlayer(MediaPlayerEntity):
         await self.coordinator.async_emit(WS_SET_RANDOM, {"value": shuffle})
 
     async def async_set_repeat(self, repeat: RepeatMode) -> None:
-        """Set repeat mode."""
+        """Set repeat mode.
+
+        Volumio has no WebSocket command for repeatSingle, so only
+        off and all are supported. When ONE is requested, we cycle
+        to OFF instead (off → all → off).
+        """
         if repeat == RepeatMode.OFF:
             await self.coordinator.async_emit(WS_SET_REPEAT, {"value": False})
         elif repeat == RepeatMode.ALL:
             await self.coordinator.async_emit(WS_SET_REPEAT, {"value": True})
         elif repeat == RepeatMode.ONE:
-            # Volumio has repeatSingle but no direct WS command documented
-            # Set repeat true first, then toggle single via REST fallback
-            await self.coordinator.async_emit(WS_SET_REPEAT, {"value": True})
+            # No WS command for repeatSingle — skip to OFF
+            await self.coordinator.async_emit(WS_SET_REPEAT, {"value": False})
 
     # --- Play media ---
 
@@ -310,4 +327,5 @@ class VolumioMediaPlayer(MediaPlayerEntity):
     @callback
     def _handle_state_update(self) -> None:
         """Handle a state update from Volumio."""
+        self._media_position_updated_at = utcnow()
         self.async_write_ha_state()
