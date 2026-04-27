@@ -6,8 +6,6 @@ import asyncio
 import logging
 from typing import Any, Callable
 
-import socketio
-
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
@@ -21,10 +19,9 @@ from .const import (
     WS_PUSH_LIST_PLAYLIST,
     WS_PUSH_MULTI_ROOM,
 )
+from .transport import EIO3Transport
 
 _LOGGER = logging.getLogger(__name__)
-
-RECONNECT_INTERVAL = 10  # seconds
 
 
 class VolumioWebSocketCoordinator:
@@ -44,8 +41,7 @@ class VolumioWebSocketCoordinator:
         self.name = name
         self.base_url = f"http://{host}:{port}"
 
-        self._sio: socketio.AsyncClient | None = None
-        self._connected = False
+        self._transport = EIO3Transport(hass, host, port)
         self._state: dict[str, Any] = {}
         self._queue: list[dict[str, Any]] = []
         self._playlists: list[str] = []
@@ -59,10 +55,86 @@ class VolumioWebSocketCoordinator:
         # Response futures for request/reply pattern
         self._pending_responses: dict[str, asyncio.Future] = {}
 
+        # Register event handlers on transport
+        self._register_handlers()
+
+    def _register_handlers(self) -> None:
+        """Register Socket.IO event handlers on the transport."""
+        self._transport.on_connect(self._on_connect)
+        self._transport.on_disconnect(self._on_disconnect)
+
+        self._transport.on(WS_PUSH_STATE, self._on_push_state)
+        self._transport.on(WS_PUSH_QUEUE, self._on_push_queue)
+        self._transport.on(WS_PUSH_LIST_PLAYLIST, self._on_push_playlists)
+        self._transport.on(WS_PUSH_BROWSE_SOURCES, self._on_push_browse_sources)
+        self._transport.on(WS_PUSH_MULTI_ROOM, self._on_push_multiroom)
+        self._transport.on(WS_PUSH_BROWSE_LIBRARY, self._on_push_browse_library)
+        self._transport.on("pushMethod", self._on_push_method)
+
+    # ── Transport event handlers ─────────────────────────────────────
+
+    async def _on_connect(self) -> None:
+        """Handle transport connection established."""
+        _LOGGER.info("Connected to Volumio at %s", self.base_url)
+        # Request initial state
+        await self._transport.emit(WS_GET_STATE)
+
+    def _on_disconnect(self) -> None:
+        """Handle transport connection lost."""
+        _LOGGER.warning("Disconnected from Volumio at %s", self.base_url)
+        self._notify_state_listeners()
+
+    def _on_push_state(self, data: dict[str, Any]) -> None:
+        """Handle pushState event."""
+        _LOGGER.debug("Received pushState: %s", data.get("title", "") if isinstance(data, dict) else "")
+        self._state = data if isinstance(data, dict) else {}
+        self.hass.loop.call_soon_threadsafe(self._notify_state_listeners)
+
+    def _on_push_queue(self, data: Any) -> None:
+        """Handle pushQueue event."""
+        _LOGGER.debug(
+            "Received pushQueue: %d items",
+            len(data) if isinstance(data, list) else 0,
+        )
+        self._queue = data if isinstance(data, list) else []
+        self.hass.loop.call_soon_threadsafe(self._notify_queue_listeners)
+
+    def _on_push_playlists(self, data: Any) -> None:
+        """Handle pushListPlaylist event."""
+        self._playlists = data if isinstance(data, list) else []
+
+    def _on_push_browse_sources(self, data: Any) -> None:
+        """Handle pushBrowseSources event."""
+        self._browse_sources = data if isinstance(data, list) else []
+        # Resolve pending future if someone is awaiting this
+        future = self._pending_responses.pop("getBrowseSources", None)
+        if future and not future.done():
+            future.set_result(self._browse_sources)
+
+    def _on_push_multiroom(self, data: Any) -> None:
+        """Handle pushMultiRoomDevices event."""
+        self._multiroom_devices = (
+            data.get("list", []) if isinstance(data, dict) else []
+        )
+
+    def _on_push_browse_library(self, data: Any) -> None:
+        """Handle browse library response for request/reply pattern."""
+        future = self._pending_responses.pop("browseLibrary", None)
+        if future and not future.done():
+            future.set_result(data)
+
+    def _on_push_method(self, data: Any) -> None:
+        """Handle callMethod response."""
+        future = self._pending_responses.pop("callMethod", None)
+        if future and not future.done():
+            future.set_result(data)
+
+    # ── Public properties (unchanged) ────────────────────────────────
+
     @property
     def connected(self) -> bool:
         """Return True if connected to Volumio."""
-        return self._connected
+        return self._transport.connected
 
     @property
     def state(self) -> dict[str, Any]:
@@ -87,7 +159,11 @@ class VolumioWebSocketCoordinator:
             return albumart
         return f"{self.base_url}{albumart}"
 
-    def register_state_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+    # ── Listener management (unchanged) ──────────────────────────────
+
+    def register_state_listener(
+        self, listener: Callable[[], None]
+    ) -> Callable[[], None]:
         """Register a callback for state changes. Returns unregister function."""
         self._state_listeners.append(listener)
 
@@ -96,7 +172,9 @@ class VolumioWebSocketCoordinator:
 
         return unregister
 
-    def register_queue_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+    def register_queue_listener(
+        self, listener: Callable[[], None]
+    ) -> Callable[[], None]:
         """Register a callback for queue changes."""
         self._queue_listeners.append(listener)
 
@@ -121,95 +199,34 @@ class VolumioWebSocketCoordinator:
             except Exception:
                 _LOGGER.exception("Error in queue listener")
 
+    # ── Connection lifecycle (unchanged signatures) ───────────────────
+
     async def async_connect(self) -> None:
         """Establish WebSocket connection to Volumio."""
-        self._sio = socketio.AsyncClient(
-            reconnection=True,
-            reconnection_attempts=0,  # infinite
-            reconnection_delay=RECONNECT_INTERVAL,
-            logger=False,
-            engineio_logger=False,
-        )
-
-        @self._sio.event
-        async def connect():
-            _LOGGER.info("Connected to Volumio at %s", self.base_url)
-            self._connected = True
-            # Request initial state
-            await self._sio.emit(WS_GET_STATE)
-
-        @self._sio.event
-        async def disconnect():
-            _LOGGER.warning("Disconnected from Volumio at %s", self.base_url)
-            self._connected = False
-            self._notify_state_listeners()
-
-        @self._sio.on(WS_PUSH_STATE)
-        async def on_push_state(data):
-            _LOGGER.debug("Received pushState: %s", data.get("title", ""))
-            self._state = data
-            self.hass.loop.call_soon_threadsafe(self._notify_state_listeners)
-
-        @self._sio.on(WS_PUSH_QUEUE)
-        async def on_push_queue(data):
-            _LOGGER.debug("Received pushQueue: %d items", len(data) if isinstance(data, list) else 0)
-            self._queue = data if isinstance(data, list) else []
-            self.hass.loop.call_soon_threadsafe(self._notify_queue_listeners)
-
-        @self._sio.on(WS_PUSH_LIST_PLAYLIST)
-        async def on_push_playlists(data):
-            self._playlists = data if isinstance(data, list) else []
-
-        @self._sio.on(WS_PUSH_BROWSE_SOURCES)
-        async def on_push_browse_sources(data):
-            self._browse_sources = data if isinstance(data, list) else []
-            # Resolve pending future if someone is awaiting this
-            future = self._pending_responses.pop("getBrowseSources", None)
-            if future and not future.done():
-                future.set_result(self._browse_sources)
-
-        @self._sio.on(WS_PUSH_MULTI_ROOM)
-        async def on_push_multiroom(data):
-            self._multiroom_devices = data.get("list", []) if isinstance(data, dict) else []
-
-        @self._sio.on(WS_PUSH_BROWSE_LIBRARY)
-        async def on_push_browse_library(data):
-            """Handle browse library response for request/reply pattern."""
-            future = self._pending_responses.pop("browseLibrary", None)
-            if future and not future.done():
-                future.set_result(data)
-
-        @self._sio.on("pushMethod")
-        async def on_push_method(data):
-            """Handle callMethod response."""
-            future = self._pending_responses.pop("callMethod", None)
-            if future and not future.done():
-                future.set_result(data)
-
         try:
-            await self._sio.connect(self.base_url, transports=["websocket"])
+            await self._transport.connect()
         except Exception as err:
-            _LOGGER.error("Failed to connect to Volumio at %s: %s", self.base_url, err)
+            _LOGGER.error(
+                "Failed to connect to Volumio at %s: %s", self.base_url, err
+            )
             raise
 
     async def async_disconnect(self) -> None:
         """Disconnect from Volumio."""
-        if self._sio:
-            await self._sio.disconnect()
-            self._connected = False
+        await self._transport.disconnect()
+
+    # ── Emit methods (unchanged signatures) ───────────────────────────
 
     async def async_emit(self, event: str, data: Any = None) -> None:
         """Emit an event to Volumio."""
-        if not self._sio or not self._connected:
-            _LOGGER.warning("Cannot emit %s: not connected", event)
-            return
-        if data is not None:
-            await self._sio.emit(event, data)
-        else:
-            await self._sio.emit(event)
+        await self._transport.emit(event, data)
 
     async def async_emit_and_wait(
-        self, event: str, data: Any = None, response_key: str | None = None, timeout: float = 10.0
+        self,
+        event: str,
+        data: Any = None,
+        response_key: str | None = None,
+        timeout: float = 10.0,
     ) -> Any:
         """Emit an event and wait for the corresponding push response."""
         key = response_key or event
@@ -224,6 +241,8 @@ class VolumioWebSocketCoordinator:
             self._pending_responses.pop(key, None)
             _LOGGER.warning("Timeout waiting for response to %s", event)
             return None
+
+    # ── High-level methods (unchanged signatures) ─────────────────────
 
     async def async_browse(self, uri: str = "") -> dict[str, Any] | None:
         """Browse library at the given URI."""
@@ -243,7 +262,9 @@ class VolumioWebSocketCoordinator:
             response_key="getBrowseSources",
         )
         if result is None:
-            _LOGGER.warning("No response from getBrowseSources, using cached data")
+            _LOGGER.warning(
+                "No response from getBrowseSources, using cached data"
+            )
             return self._browse_sources
         return result
 
