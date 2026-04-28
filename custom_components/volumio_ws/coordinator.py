@@ -12,6 +12,21 @@ from .const import (
     DOMAIN,
     WS_GET_STATE,
     WS_GET_BROWSE_SOURCES,
+    WS_GET_QUEUE,
+    WS_ADD_TO_QUEUE,
+    WS_REMOVE_FROM_QUEUE,
+    WS_CLEAR_QUEUE,
+    WS_MOVE_QUEUE,
+    WS_PLAY,
+    WS_LIST_PLAYLIST,
+    WS_CREATE_PLAYLIST,
+    WS_DELETE_PLAYLIST,
+    WS_ADD_TO_PLAYLIST,
+    WS_REMOVE_FROM_PLAYLIST,
+    WS_PLAY_PLAYLIST,
+    WS_ENQUEUE,
+    WS_ADD_TO_FAVOURITES,
+    WS_REMOVE_FROM_FAVOURITES,
     WS_PUSH_STATE,
     WS_PUSH_QUEUE,
     WS_PUSH_BROWSE_LIBRARY,
@@ -101,11 +116,19 @@ class VolumioWebSocketCoordinator:
             len(data) if isinstance(data, list) else 0,
         )
         self._queue = data if isinstance(data, list) else []
+        # Resolve pending future if someone is awaiting this
+        future = self._pending_responses.pop("getQueue", None)
+        if future and not future.done():
+            future.set_result(self._queue)
         self.hass.loop.call_soon_threadsafe(self._notify_queue_listeners)
 
     def _on_push_playlists(self, data: Any) -> None:
         """Handle pushListPlaylist event."""
         self._playlists = data if isinstance(data, list) else []
+        # Resolve pending future if someone is awaiting this
+        future = self._pending_responses.pop("listPlaylist", None)
+        if future and not future.done():
+            future.set_result(self._playlists)
 
     def _on_push_browse_sources(self, data: Any) -> None:
         """Handle pushBrowseSources event."""
@@ -305,3 +328,227 @@ class VolumioWebSocketCoordinator:
             {"value": query},
             response_key="browseLibrary",
         )
+
+    # ── Queue methods ─────────────────────────────────────────────────
+
+    async def async_get_queue(self) -> list[dict[str, Any]]:
+        """Get the current play queue from Volumio.
+
+        Emits getQueue, waits for pushQueue response.
+        Returns the queue item list.
+        """
+        result = await self.async_emit_and_wait(
+            WS_GET_QUEUE,
+            response_key="getQueue",
+        )
+        if result is None:
+            _LOGGER.warning(
+                "No response from getQueue, using cached data"
+            )
+            return self._queue
+        return result
+
+    async def async_add_to_queue(self, item: dict[str, Any]) -> dict[str, Any]:
+        """Add a track to the play queue.
+
+        Args:
+            item: Track data dict. Expected keys (needs verification):
+                  uri (required), title, service, album, artist, albumart
+
+        Returns:
+            Acknowledgment dict. Caller should use async_get_queue()
+            to get the updated queue.
+        """
+        await self.async_emit(WS_ADD_TO_QUEUE, item)
+        return {"success": True, "command": "addToQueue"}
+
+    async def async_remove_from_queue(self, index: int) -> dict[str, Any]:
+        """Remove a track from the play queue by position.
+
+        Args:
+            index: Zero-based position in the queue.
+                   Payload shape needs verification — may be
+                   {value: index} or {index: N}.
+
+        Returns:
+            Acknowledgment dict.
+        """
+        await self.async_emit(WS_REMOVE_FROM_QUEUE, {"value": index})
+        return {"success": True, "command": "removeFromQueue"}
+
+    async def async_move_queue(
+        self, from_index: int, to_index: int
+    ) -> dict[str, Any]:
+        """Move a queue item from one position to another.
+
+        Args:
+            from_index: Current position (zero-based).
+            to_index: Target position (zero-based).
+            Payload shape needs verification.
+
+        Returns:
+            Acknowledgment dict.
+        """
+        await self.async_emit(
+            WS_MOVE_QUEUE, {"from": from_index, "to": to_index}
+        )
+        return {"success": True, "command": "moveQueue"}
+
+    async def async_clear_queue(self) -> dict[str, Any]:
+        """Clear the entire play queue.
+
+        Returns:
+            Acknowledgment dict.
+        """
+        await self.async_emit(WS_CLEAR_QUEUE)
+        return {"success": True, "command": "clearQueue"}
+
+    async def async_play_index(self, index: int) -> dict[str, Any]:
+        """Play the track at a specific queue position.
+
+        Args:
+            index: Zero-based position in the queue.
+
+        Returns:
+            Acknowledgment dict.
+        """
+        await self.async_emit(WS_PLAY, {"value": index})
+        return {"success": True, "command": "play"}
+
+    # ── Playlist methods ──────────────────────────────────────────────
+
+    async def async_list_playlists(self) -> list[str]:
+        """Get the list of saved playlists from Volumio.
+
+        Emits listPlaylist, waits for pushListPlaylist response.
+        Returns a list of playlist name strings.
+        """
+        result = await self.async_emit_and_wait(
+            WS_LIST_PLAYLIST,
+            response_key="listPlaylist",
+        )
+        if result is None:
+            _LOGGER.warning(
+                "No response from listPlaylist, using cached data"
+            )
+            return self._playlists
+        return result
+
+    async def async_create_playlist(self, name: str) -> dict[str, Any]:
+        """Create a new playlist.
+
+        Args:
+            name: Name for the new playlist.
+
+        Returns:
+            Acknowledgment dict.
+        """
+        await self.async_emit(WS_CREATE_PLAYLIST, {"name": name})
+        return {"success": True, "command": "createPlaylist"}
+
+    async def async_delete_playlist(self, name: str) -> dict[str, Any]:
+        """Delete a playlist.
+
+        Args:
+            name: Name of the playlist to delete.
+
+        Returns:
+            Acknowledgment dict.
+        """
+        await self.async_emit(WS_DELETE_PLAYLIST, {"name": name})
+        return {"success": True, "command": "deletePlaylist"}
+
+    async def async_add_to_playlist(
+        self, name: str, uri: str, service: str | None = None
+    ) -> dict[str, Any]:
+        """Add a track to a playlist.
+
+        Args:
+            name: Playlist name.
+            uri: Track URI.
+            service: Service/plugin name (e.g. 'mpd', 'qobuz').
+                     Needs verification — may or may not be required.
+
+        Returns:
+            Acknowledgment dict.
+        """
+        payload: dict[str, Any] = {"name": name, "uri": uri}
+        if service is not None:
+            payload["service"] = service
+        await self.async_emit(WS_ADD_TO_PLAYLIST, payload)
+        return {"success": True, "command": "addToPlaylist"}
+
+    async def async_remove_from_playlist(
+        self, name: str, uri: str, service: str | None = None
+    ) -> dict[str, Any]:
+        """Remove a track from a playlist.
+
+        Args:
+            name: Playlist name.
+            uri: Track URI to remove.
+            service: Service/plugin name. Needs verification.
+
+        Returns:
+            Acknowledgment dict.
+        """
+        payload: dict[str, Any] = {"name": name, "uri": uri}
+        if service is not None:
+            payload["service"] = service
+        await self.async_emit(WS_REMOVE_FROM_PLAYLIST, payload)
+        return {"success": True, "command": "removeFromPlaylist"}
+
+    async def async_play_playlist(self, name: str) -> dict[str, Any]:
+        """Play a playlist (replaces current queue).
+
+        Args:
+            name: Playlist name.
+
+        Returns:
+            Acknowledgment dict.
+        """
+        await self.async_emit(WS_PLAY_PLAYLIST, {"name": name})
+        return {"success": True, "command": "playPlaylist"}
+
+    async def async_enqueue_playlist(self, name: str) -> dict[str, Any]:
+        """Add all tracks from a playlist to the current queue.
+
+        Args:
+            name: Playlist name.
+
+        Returns:
+            Acknowledgment dict.
+        """
+        await self.async_emit(WS_ENQUEUE, {"name": name})
+        return {"success": True, "command": "enqueue"}
+
+    # ── Favorites methods ─────────────────────────────────────────────
+
+    async def async_add_to_favourites(
+        self, item: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Add a track to favourites.
+
+        Args:
+            item: Track data dict. Expected keys (needs verification):
+                  uri (required), title, service
+
+        Returns:
+            Acknowledgment dict.
+        """
+        await self.async_emit(WS_ADD_TO_FAVOURITES, item)
+        return {"success": True, "command": "addToFavourites"}
+
+    async def async_remove_from_favourites(
+        self, item: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Remove a track from favourites.
+
+        Args:
+            item: Track data dict. Expected keys (needs verification):
+                  uri (required), service
+
+        Returns:
+            Acknowledgment dict.
+        """
+        await self.async_emit(WS_REMOVE_FROM_FAVOURITES, item)
+        return {"success": True, "command": "removeFromFavourites"}

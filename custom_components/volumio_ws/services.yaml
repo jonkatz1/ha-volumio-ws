@@ -18,3 +18,390 @@ search:
       example: "Beatles"
       selector:
         text:
+
+# ── Queue services ───────────────────────────────────────────────────
+
+queue_get:
+  name: Get Queue
+  description: >-
+    Get the current play queue from Volumio.
+    Returns a list of queue items with track metadata.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device to query.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+
+queue_add:
+  name: Add to Queue
+  description: >-
+    Add a track to the play queue.
+    The uri field is required; other metadata fields are optional.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device to add to.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    uri:
+      name: URI
+      description: The track URI (e.g. "qobuz://song/123456").
+      required: true
+      example: "qobuz://song/353014499"
+      selector:
+        text:
+    title:
+      name: Title
+      description: Track title.
+      required: false
+      example: "I Need You"
+      selector:
+        text:
+    service:
+      name: Service
+      description: Service/plugin name (e.g. "mpd", "qobuz").
+      required: false
+      example: "qobuz"
+      selector:
+        text:
+    album:
+      name: Album
+      description: Album name.
+      required: false
+      example: "Anthology 4"
+      selector:
+        text:
+    artist:
+      name: Artist
+      description: Artist name.
+      required: false
+      example: "The Beatles"
+      selector:
+        text:
+    albumart:
+      name: Album Art URL
+      description: URL to album artwork.
+      required: false
+      selector:
+        text:
+
+queue_remove:
+  name: Remove from Queue
+  description: >-
+    Remove a track from the play queue by its position index (zero-based).
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    index:
+      name: Index
+      description: Zero-based position of the track to remove.
+      required: true
+      example: 0
+      selector:
+        number:
+          min: 0
+          mode: box
+
+queue_move:
+  name: Move Queue Item
+  description: >-
+    Move a queue item from one position to another (zero-based indices).
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    from_index:
+      name: From Index
+      description: Current position of the track (zero-based).
+      required: true
+      example: 0
+      selector:
+        number:
+          min: 0
+          mode: box
+    to_index:
+      name: To Index
+      description: Target position (zero-based).
+      required: true
+      example: 3
+      selector:
+        number:
+          min: 0
+          mode: box
+
+queue_clear:
+  name: Clear Queue
+  description: >-
+    Clear the entire play queue.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+
+queue_play_index:
+  name: Play Queue Index
+  description: >-
+    Start playback at a specific position in the queue (zero-based index).
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    index:
+      name: Index
+      description: Zero-based position of the track to play.
+      required: true
+      example: 0
+      selector:
+        number:
+          min: 0
+          mode: box
+
+# ── Playlist services ────────────────────────────────────────────────
+
+playlist_list:
+  name: List Playlists
+  description: >-
+    Get the list of saved playlists from Volumio.
+    Returns an array of playlist name strings.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device to query.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+
+playlist_create:
+  name: Create Playlist
+  description: >-
+    Create a new empty playlist.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    name:
+      name: Playlist Name
+      description: Name for the new playlist.
+      required: true
+      example: "My Playlist"
+      selector:
+        text:
+
+playlist_delete:
+  name: Delete Playlist
+  description: >-
+    Delete a saved playlist by name.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    name:
+      name: Playlist Name
+      description: Name of the playlist to delete.
+      required: true
+      example: "My Playlist"
+      selector:
+        text:
+
+playlist_add_track:
+  name: Add Track to Playlist
+  description: >-
+    Add a track to a saved playlist.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    name:
+      name: Playlist Name
+      description: Name of the playlist to add to.
+      required: true
+      example: "My Playlist"
+      selector:
+        text:
+    uri:
+      name: URI
+      description: The track URI to add.
+      required: true
+      example: "qobuz://song/353014499"
+      selector:
+        text:
+    service:
+      name: Service
+      description: Service/plugin name (e.g. "mpd", "qobuz"). May be required by Volumio — needs verification.
+      required: false
+      example: "qobuz"
+      selector:
+        text:
+
+playlist_remove_track:
+  name: Remove Track from Playlist
+  description: >-
+    Remove a track from a saved playlist.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    name:
+      name: Playlist Name
+      description: Name of the playlist to remove from.
+      required: true
+      example: "My Playlist"
+      selector:
+        text:
+    uri:
+      name: URI
+      description: The track URI to remove.
+      required: true
+      example: "qobuz://song/353014499"
+      selector:
+        text:
+    service:
+      name: Service
+      description: Service/plugin name. May be required by Volumio — needs verification.
+      required: false
+      example: "qobuz"
+      selector:
+        text:
+
+playlist_play:
+  name: Play Playlist
+  description: >-
+    Play a saved playlist. Replaces the current queue with the playlist tracks.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    name:
+      name: Playlist Name
+      description: Name of the playlist to play.
+      required: true
+      example: "My Playlist"
+      selector:
+        text:
+
+playlist_enqueue:
+  name: Enqueue Playlist
+  description: >-
+    Add all tracks from a saved playlist to the end of the current queue
+    without replacing it.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    name:
+      name: Playlist Name
+      description: Name of the playlist to enqueue.
+      required: true
+      example: "My Playlist"
+      selector:
+        text:
+
+# ── Favorites services ───────────────────────────────────────────────
+
+favorites_add:
+  name: Add to Favorites
+  description: >-
+    Add a track to Volumio's favorites list.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    uri:
+      name: URI
+      description: The track URI to add to favorites.
+      required: true
+      example: "qobuz://song/353014499"
+      selector:
+        text:
+    title:
+      name: Title
+      description: Track title.
+      required: false
+      example: "I Need You"
+      selector:
+        text:
+    service:
+      name: Service
+      description: Service/plugin name (e.g. "mpd", "qobuz").
+      required: false
+      example: "qobuz"
+      selector:
+        text:
+
+favorites_remove:
+  name: Remove from Favorites
+  description: >-
+    Remove a track from Volumio's favorites list.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    uri:
+      name: URI
+      description: The track URI to remove from favorites.
+      required: true
+      example: "qobuz://song/353014499"
+      selector:
+        text:
+    service:
+      name: Service
+      description: Service/plugin name.
+      required: false
+      example: "qobuz"
+      selector:
+        text:
