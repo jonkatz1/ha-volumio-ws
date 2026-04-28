@@ -48,6 +48,9 @@ class VolumioWebSocketCoordinator:
         self._browse_sources: list[dict[str, Any]] = []
         self._multiroom_devices: list[dict[str, Any]] = []
 
+        # Device metadata (populated during setup, not runtime)
+        self.sw_version: str | None = None
+
         # Listeners
         self._state_listeners: list[Callable[[], None]] = []
         self._queue_listeners: list[Callable[[], None]] = []
@@ -76,8 +79,9 @@ class VolumioWebSocketCoordinator:
     async def _on_connect(self) -> None:
         """Handle transport connection established."""
         _LOGGER.info("Connected to Volumio at %s", self.base_url)
-        # Request initial state
+        # Request initial state and browse sources
         await self._transport.emit(WS_GET_STATE)
+        await self._transport.emit(WS_GET_BROWSE_SOURCES)
 
     def _on_disconnect(self) -> None:
         """Handle transport connection lost."""
@@ -150,6 +154,31 @@ class VolumioWebSocketCoordinator:
     def playlists(self) -> list[str]:
         """Return available playlists."""
         return self._playlists
+
+    @property
+    def browse_sources(self) -> list[dict[str, Any]]:
+        """Return the cached list of browse sources."""
+        return self._browse_sources
+
+    @property
+    def browse_source_names(self) -> list[str]:
+        """Return browse source names for source_list."""
+        return [s.get("name", "") for s in self._browse_sources if s.get("name")]
+
+    def source_name_for_service(self, service: str | None) -> str | None:
+        """Map a Volumio service/plugin_name to its browse source display name.
+
+        pushState reports 'service' as the plugin_name (e.g. 'qobuz', 'mpd').
+        Browse sources have 'plugin_name' matching this value.
+        Returns the human-friendly name (e.g. 'Qobuz', 'Music Library').
+        """
+        if not service:
+            return None
+        for source in self._browse_sources:
+            if source.get("plugin_name") == service:
+                return source.get("name")
+        # Fallback: return raw service name if no match in browse sources
+        return service
 
     def resolve_albumart(self, albumart: str | None) -> str | None:
         """Resolve relative albumart URLs to absolute."""

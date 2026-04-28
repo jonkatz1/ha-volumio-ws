@@ -70,7 +70,7 @@ class VolumioMediaPlayer(MediaPlayerEntity):
             "name": coordinator.name,
             "manufacturer": "Volumio",
             "model": "Volumio Player",
-            "sw_version": None,  # TODO: get from device info
+            "sw_version": coordinator.sw_version,
         }
         self._unregister_listener: callable | None = None
         self._media_position_updated_at = None
@@ -89,7 +89,9 @@ class VolumioMediaPlayer(MediaPlayerEntity):
             | MediaPlayerEntityFeature.REPEAT_SET
             | MediaPlayerEntityFeature.PLAY_MEDIA
             | MediaPlayerEntityFeature.BROWSE_MEDIA
-            | MediaPlayerEntityFeature.SELECT_SOURCE
+            # SELECT_SOURCE omitted: Volumio browse sources open browse
+            # trees, not playback. select_source has no meaningful action.
+            # source and source_list are still populated as attributes.
             | MediaPlayerEntityFeature.TURN_ON
             | MediaPlayerEntityFeature.TURN_OFF
         )
@@ -183,8 +185,15 @@ class VolumioMediaPlayer(MediaPlayerEntity):
 
     @property
     def shuffle(self) -> bool | None:
-        """Return True if shuffle is enabled."""
-        return self.coordinator.state.get("random")
+        """Return True if shuffle is enabled.
+
+        Volumio reports random=null before shuffle has ever been toggled.
+        Treat null as False — "never set" is functionally "off".
+        """
+        value = self.coordinator.state.get("random")
+        if value is None:
+            return False
+        return value
 
     @property
     def repeat(self) -> RepeatMode | None:
@@ -197,14 +206,50 @@ class VolumioMediaPlayer(MediaPlayerEntity):
 
     @property
     def source(self) -> str | None:
-        """Return the current source/service."""
+        """Return the current playback service (plugin name).
+
+        Returns the raw Volumio 'service' field (e.g. 'mpd', 'qobuz',
+        'webradio'). Not mapped to browse source names because multiple
+        browse sources share the same plugin_name (e.g. 'mpd' backs
+        Music Library, Playlists, Artists, Albums, Genres).
+        """
         return self.coordinator.state.get("service")
 
     @property
     def source_list(self) -> list[str] | None:
-        """Return available sources."""
-        # TODO: Populate from getBrowseSources
-        return None
+        """Return available source names from Volumio browse sources.
+
+        Note: SELECT_SOURCE is not in supported_features because Volumio
+        browse sources open navigation trees, not playback. This list is
+        exposed as an attribute for informational/automation use.
+        """
+        names = self.coordinator.browse_source_names
+        return names if names else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes not covered by standard properties.
+
+        queue_position: index of current track in the play queue (not seek position)
+        uri: current track URI (e.g. "qobuz://song/353014499")
+        volatile: whether playback source is volatile/analog in
+        """
+        attrs = {}
+        state = self.coordinator.state
+
+        queue_pos = state.get("position")
+        if queue_pos is not None:
+            attrs["queue_position"] = queue_pos
+
+        uri = state.get("uri")
+        if uri is not None:
+            attrs["uri"] = uri
+
+        volatile = state.get("volatile")
+        if volatile is not None:
+            attrs["volatile"] = volatile
+
+        return attrs
 
     # --- Playback commands ---
 
