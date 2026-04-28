@@ -1,0 +1,20 @@
+search:
+  name: Search
+  description: >-
+    Search the Volumio library across all configured sources.
+    Returns categorized results (artists, albums, tracks, etc.).
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device to search on.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    query:
+      name: Query
+      description: The search term.
+      required: true
+      example: "Beatles"
+      selector:
+        text:

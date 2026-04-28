@@ -10,9 +10,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN, CONF_NAME, DEFAULT_PORT, DEFAULT_NAME
 from .coordinator import VolumioWebSocketCoordinator
+from .services import register_services
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,6 +46,16 @@ async def _fetch_system_version(hass: HomeAssistant, host: str, port: int) -> st
     return None
 
 
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up the Volumio WebSocket integration (domain-level).
+
+    Registers services once for all config entries.
+    Called before any async_setup_entry.
+    """
+    register_services(hass)
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Volumio WebSocket from a config entry."""
     host = entry.data[CONF_HOST]
@@ -65,9 +77,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-    # TODO: Register custom services (search, playlist CRUD, etc.)
-    # await async_register_services(hass)
 
     return True
 
