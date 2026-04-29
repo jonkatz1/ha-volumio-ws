@@ -21,3 +21,6 @@ Thumbs.db
 
 # Project backup convention
 *.bak-pre-t*
+
+# Frontend build environment
+frontend/node_modules/

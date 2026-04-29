@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import logging
+import os
 
 import aiohttp
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.components import panel_custom
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -15,10 +18,18 @@ from homeassistant.helpers.typing import ConfigType
 from .const import DOMAIN, CONF_NAME, DEFAULT_PORT, DEFAULT_NAME
 from .coordinator import VolumioWebSocketCoordinator
 from .services import register_services
+from .ws_api import async_register_ws_api
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.MEDIA_PLAYER, Platform.SENSOR]
+
+# Panel configuration
+PANEL_ICON = "mdi:speaker"
+PANEL_TITLE = "Volumio"
+PANEL_URL_PATH = "volumio"
+PANEL_COMPONENT_NAME = "volumio-panel"
+PANEL_JS_FILENAME = "volumio-panel.js"
 
 
 async def _fetch_system_version(hass: HomeAssistant, host: str, port: int) -> str | None:
@@ -49,10 +60,11 @@ async def _fetch_system_version(hass: HomeAssistant, host: str, port: int) -> st
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Volumio WebSocket integration (domain-level).
 
-    Registers services once for all config entries.
+    Registers services and WS API commands once for all config entries.
     Called before any async_setup_entry.
     """
     register_services(hass)
+    async_register_ws_api(hass)
     return True
 
 
@@ -78,7 +90,61 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Register the sidebar panel (once, first entry wins)
+    await _async_register_panel(hass, entry)
+
     return True
+
+
+async def _async_register_panel(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    """Register the Volumio sidebar panel (once).
+
+    Serves the panel JS file via a static path and registers
+    a custom panel in the HA sidebar. Skips if already registered
+    (handles multiple config entries gracefully).
+    """
+    # Check if panel is already registered (avoid duplicates)
+    if PANEL_URL_PATH in hass.data.get("frontend_panels", {}):
+        _LOGGER.debug("Panel already registered, skipping")
+        return
+
+    host = entry.data[CONF_HOST]
+    port = entry.data.get(CONF_PORT, DEFAULT_PORT)
+
+    # Path to the built JS bundle
+    panel_dir = os.path.join(os.path.dirname(__file__), "frontend")
+    static_url = f"/{DOMAIN}_panel"
+
+    # Register the static file path so HA serves the JS file
+    try:
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(static_url, panel_dir, cache_headers=False)]
+        )
+    except Exception as err:
+        _LOGGER.error("Failed to register panel static path: %s", err)
+        return
+
+    # Register the custom panel in the sidebar
+    try:
+        await panel_custom.async_register_panel(
+            hass,
+            webcomponent_name=PANEL_COMPONENT_NAME,
+            frontend_url_path=PANEL_URL_PATH,
+            sidebar_title=PANEL_TITLE,
+            sidebar_icon=PANEL_ICON,
+            module_url=f"{static_url}/{PANEL_JS_FILENAME}",
+            embed_iframe=False,
+            require_admin=False,
+            config={
+                "config_entry_id": entry.entry_id,
+                "volumio_url": f"http://{host}:{port}",
+            },
+        )
+        _LOGGER.info("Volumio panel registered in sidebar")
+    except Exception as err:
+        _LOGGER.error("Failed to register panel: %s", err)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

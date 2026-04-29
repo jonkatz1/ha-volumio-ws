@@ -25,6 +25,7 @@ Rule: each layer calls only the layer directly below. Coordinator methods MUST r
 | T4 — Transport rewrite | DONE | `python-socketio` replaced with raw aiohttp EIO3 WebSocket. Stable connection confirmed. Branch: `feat/T4-transport-rewrite`. |
 | T5-8 — Core polish | DONE | Extra state attrs, source list, sw_version, shuffle fix. Branch: `feat/T5-8-core-polish`, merged to main. |
 | T11+T9 — Services + Search | DONE | Service infrastructure (`services.py`, `services.yaml`) + search service. `config_entry_id` targeting, `async_setup` registration, `SupportsResponse.OPTIONAL`. Branch: `feat/T11-9-services`. |
+| T12-14 — Services (queue/playlist/favorites) | DONE | 15 new services, async closure fix. Branch: `feat/T12-14-services`. |
 
 Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-initiated PING (`2`) every 23s, server responds PONG (`3`) within 5s. Reconnection with exponential backoff (5s → 60s cap). No external dependencies — aiohttp is HA-native.
 
@@ -53,12 +54,12 @@ Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-init
 | `const.py` | DOMAIN, defaults (port 3000), WS event name constants. |
 | `config_flow.py` | UI config flow — `async_test_connect` for host/port validation, zeroconf discovery handler. |
 | `transport.py` | `EIO3Transport` — raw aiohttp WebSocket, EIO3 framing, client-initiated PING/PONG, exponential-backoff reconnection. |
-| `coordinator.py` | `VolumioWebSocketCoordinator` — runs on top of `EIO3Transport`; owns state cache, listeners, request/reply futures. Emits `getBrowseSources` on connect; exposes `browse_sources`, `browse_source_names`, `sw_version`. |
+| `coordinator.py` | `VolumioWebSocketCoordinator` — runs on top of `EIO3Transport`; owns state cache, listeners, request/reply futures. Emits `getBrowseSources` on connect; exposes `browse_sources`, `browse_source_names`, `sw_version`. Queue/playlist/favorites methods (`async_get_queue`, `async_add_to_queue`, `async_list_playlists`, `async_add_to_favourites`, etc — 15 methods total). Push handlers for `pushQueue` and `pushListPlaylist` now resolve request/reply futures. |
 | `media_player.py` | `MediaPlayerEntity` — playback controls, volume, browse_media. `extra_state_attributes` (queue_position, uri, volatile); `source_list` from browse sources; shuffle null→false fix; `SELECT_SOURCE` removed from supported features. |
 | `sensor.py` | Sensor entities for Volumio audio metadata (sample rate, bit depth, etc.). |
 | `browse_media.py` | Browse-media tree builder over coordinator's `async_browse` / `async_get_browse_sources`. |
-| `services.py` | Service handlers — `register_services()` called from `async_setup`. `_get_coordinator()` resolves `config_entry_id` → coordinator. Currently: search. Pattern for T12-T14, T21. |
-| `services.yaml` | Service schema definitions for HA UI. `config_entry` selector with `integration: volumio_ws`. |
+| `services.py` | Service handlers — `register_services()` called from `async_setup`. 16 services total: search, queue (get/add/remove/move/clear/play_index), playlist (list/create/delete/add_track/remove_track/play/enqueue), favorites (add/remove). Uses async closures for HA `SupportsResponse` compatibility. |
+| `services.yaml` | Service schema definitions for HA UI. 16 services defined. |
 | `strings.json` | UI strings for config flow. |
 | `translations/en.json` | English translations. |
 
@@ -74,6 +75,8 @@ Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-init
 - `source_list` still populates with browse-source display names but is only visible via entity attributes (not the HA UI dropdown) since `SELECT_SOURCE` is removed.
 - Services use `config_entry_id` (required) for targeting, not `entity_id`. Per HA docs: "target the thing the action acts on." Search operates on the Volumio device (config entry), not a specific entity. No auto-select fallback.
 - Services registered in `async_setup` (domain-level, once per HA lifetime), not `async_setup_entry`. Per HA docs and music_assistant pattern. No unregistration needed.
+- Mutation services (`queue_add`, `queue_remove`, `playlist_create`, `favorites_add`, etc.) return acknowledgment dicts (`{"success": True, "command": "..."}`) rather than re-fetching updated state. Panel should call the corresponding get/list service after mutations to refresh. Can upgrade to re-fetch pattern later if needed.
+- Service handlers use async closures (not lambdas) to capture `hass`. Lambdas break `SupportsResponse` because `asyncio.iscoroutinefunction()` returns False for them.
 
 ## Housekeeping
 - `/config/custom_components/volumio_ws.old` should be deleted from the HA config dir (harmless but messy).
@@ -85,3 +88,5 @@ Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-init
 | — | Sensor | `bitrate` sensor missing from sensor platform. |
 | — | State | `consume` field not tracked in coordinator state. |
 | — | Browse | Pandora browse title cosmetic issue. |
+| — | Services | `queue_move`, `queue_clear`, `queue_play_index`, `playlist_create/delete/add_track/remove_track/play/enqueue` not yet live-tested. Same patterns as tested services — low risk. |
+| — | Services | Payload shapes for `removeFromQueue` (`{value: index}`), `moveQueue` (`{from: N, to: N}`), `addToPlaylist`/`removeFromPlaylist` (`service` field optional?), `addToFavourites`/`removeFromFavourites` item dict — working in tested cases but not exhaustively verified against all edge cases. |
