@@ -233,6 +233,8 @@ class VolumioMediaPlayer(MediaPlayerEntity):
         queue_position: index of current track in the play queue (not seek position)
         uri: current track URI (e.g. "qobuz://song/353014499")
         volatile: whether playback source is volatile/analog in
+        bitrate: audio bitrate string (e.g. "2239 Kbps") — needed by panel
+                 for lossy quality tier discrimination (High vs Basic)
         """
         attrs = {}
         state = self.coordinator.state
@@ -248,6 +250,14 @@ class VolumioMediaPlayer(MediaPlayerEntity):
         volatile = state.get("volatile")
         if volatile is not None:
             attrs["volatile"] = volatile
+
+        bitrate = state.get("bitrate")
+        if bitrate is not None:
+            attrs["bitrate"] = bitrate
+
+        source_names = self.coordinator.browse_source_names
+        if source_names:
+            attrs["source_list"] = source_names
 
         return attrs
 

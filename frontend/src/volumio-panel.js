@@ -1,11 +1,25 @@
 /**
- * Volumio Panel — LitElement web component for Home Assistant sidebar.
+ * Volumio Panel — main LitElement panel for Home Assistant sidebar.
  *
- * T15: Infrastructure skeleton.
- * Proves: panel registration, hass integration, entity state display,
- * service calls, WS API subscriptions, HA theme support.
+ * T17: Layout shell, player bar, Now Playing view.
+ * Replaces T15 skeleton with production three-zone layout.
+ *
+ * Architecture:
+ *   - This component owns hass, entity state, queue data, and routing
+ *   - Sub-components receive data via properties, emit events upward
+ *   - Service calls and WS subscriptions are centralized here
  */
 import { LitElement, html, css } from "lit";
+import { sharedStyles } from "./styles/shared-styles.js";
+import { detectQuality } from "./utils/quality-utils.js";
+import { resolveArt } from "./utils/format-utils.js";
+import "./components/top-bar.js";
+import "./components/left-nav.js";
+import "./components/player-bar.js";
+import "./components/now-playing.js";
+
+// HA supported_features bitmask values
+const SUPPORT_VOLUME_SET = 4;
 
 class VolumioPanel extends LitElement {
   static get properties() {
@@ -14,785 +28,759 @@ class VolumioPanel extends LitElement {
       narrow: { type: Boolean },
       route: { type: Object },
       panel: { type: Object },
+      // Internal state
       _entityId: { type: String, state: true },
       _configEntryId: { type: String, state: true },
-      _playerState: { type: Object, state: true },
       _queue: { type: Array, state: true },
-      _searchResults: { type: Object, state: true },
-      _searchQuery: { type: String, state: true },
-      _error: { type: String, state: true },
-      _queueSubId: { type: Number, state: true },
+      _queueUnsub: { state: true },
+      _activeView: { type: String, state: true },
+      _navMode: { type: String, state: true },
+      _showQueue: { type: Boolean, state: true },
+      _showNavFlyout: { type: Boolean, state: true },
+      _sensorBase: { type: String, state: true },
+      _isFavorite: { type: Boolean, state: true },
     };
   }
 
   static get styles() {
-    return css`
-      :host {
-        display: block;
-        height: 100%;
-        background: var(--primary-background-color, #fafafa);
-        color: var(--primary-text-color, #212121);
-        font-family: var(--paper-font-body1_-_font-family, "Roboto", sans-serif);
-        box-sizing: border-box;
-      }
+    return [
+      sharedStyles,
+      css`
+        :host {
+          display: block;
+          height: 100%;
+          background: var(--primary-background-color, #121212);
+          color: var(--primary-text-color, #e0e0e0);
+          font-family: var(--ha-font-family, Roboto, sans-serif);
+          box-sizing: border-box;
+          overflow: hidden;
+        }
 
-      *,
-      *::before,
-      *::after {
-        box-sizing: inherit;
-      }
+        *,
+        *::before,
+        *::after {
+          box-sizing: border-box;
+        }
 
-      .toolbar {
-        display: flex;
-        align-items: center;
-        height: 56px;
-        padding: 0 16px;
-        background: var(--app-header-background-color, var(--primary-color, #03a9f4));
-        color: var(--app-header-text-color, #fff);
-        font-size: 20px;
-        font-weight: 400;
-      }
+        .shell {
+          display: grid;
+          grid-template-rows: auto 1fr auto;
+          height: 100%;
+        }
 
-      .menu-btn {
-        display: none;
-        width: 40px;
-        height: 40px;
-        border-radius: 8px;
-        border: none;
-        background: transparent;
-        color: inherit;
-        cursor: pointer;
-        align-items: center;
-        justify-content: center;
-        margin-right: 8px;
-        flex-shrink: 0;
-        padding: 0;
-      }
+        /* ── Three-zone content area ─────────────── */
+        .content-area {
+          display: grid;
+          grid-template-columns: auto 1fr auto;
+          overflow: hidden;
+          position: relative;
+        }
 
-      .menu-btn svg {
-        width: 24px;
-        height: 24px;
-        fill: currentColor;
-      }
+        .left-zone {
+          overflow: hidden;
+          transition: width 0.2s ease;
+        }
 
-      .menu-btn:hover {
-        background: rgba(255, 255, 255, 0.08);
-      }
+        .left-zone.pinned {
+          width: var(--volumio-nav-width-pinned, 240px);
+        }
 
-      .toolbar-title {
-        flex: 1;
-      }
+        .left-zone.collapsed {
+          width: var(--volumio-nav-width-collapsed, 56px);
+        }
 
-      .content {
-        padding: 16px;
-        max-width: 960px;
-        margin: 0 auto;
-      }
+        .left-zone.hidden {
+          width: 0;
+        }
 
-      .card {
-        background: var(--card-background-color, #fff);
-        border-radius: 8px;
-        padding: 16px;
-        margin-bottom: 16px;
-        box-shadow: var(
-          --ha-card-box-shadow,
-          0 2px 2px 0 rgba(0, 0, 0, 0.14),
-          0 1px 5px 0 rgba(0, 0, 0, 0.12),
-          0 3px 1px -2px rgba(0, 0, 0, 0.2)
-        );
-      }
+        .center-zone {
+          overflow-y: auto;
+          overflow-x: hidden;
+          min-width: 0;
+        }
 
-      .card h2 {
-        margin: 0 0 12px 0;
-        font-size: 16px;
-        font-weight: 500;
-        color: var(--primary-text-color);
-      }
+        .right-zone {
+          overflow: hidden;
+          transition: width 0.2s ease;
+        }
 
-      .state-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px 16px;
-      }
+        .right-zone.pinned {
+          width: var(--volumio-queue-width, 320px);
+          border-left: 1px solid var(--divider-color, rgba(255,255,255,0.08));
+        }
 
-      .state-row {
-        display: flex;
-        justify-content: space-between;
-        padding: 4px 0;
-        border-bottom: 1px solid var(--divider-color, rgba(0, 0, 0, 0.12));
-      }
+        .right-zone.hidden {
+          width: 0;
+        }
 
-      .state-label {
-        color: var(--secondary-text-color, #727272);
-        font-size: 14px;
-      }
+        /* ── Flyout overlay ──────────────────────── */
+        .flyout-scrim {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.5);
+          z-index: 190;
+        }
 
-      .state-value {
-        font-size: 14px;
-        font-weight: 500;
-        text-align: right;
-      }
+        .flyout-panel {
+          position: fixed;
+          top: 0;
+          bottom: 0;
+          z-index: 200;
+          transition: transform 0.2s ease-out;
+        }
 
-      .albumart {
-        width: 80px;
-        height: 80px;
-        border-radius: 4px;
-        object-fit: cover;
-        background: var(--divider-color, #e0e0e0);
-        margin-bottom: 12px;
-      }
+        .flyout-panel.left {
+          left: 0;
+          width: var(--volumio-nav-width-pinned, 240px);
+        }
 
-      .now-playing {
-        display: flex;
-        gap: 16px;
-        align-items: flex-start;
-      }
+        .flyout-panel.right {
+          right: 0;
+          width: var(--volumio-queue-width, 320px);
+        }
 
-      .now-playing-info {
-        flex: 1;
-        min-width: 0;
-      }
-
-      .now-playing-title {
-        font-size: 18px;
-        font-weight: 500;
-        margin: 0 0 4px 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .now-playing-artist {
-        font-size: 14px;
-        color: var(--secondary-text-color, #727272);
-        margin: 0 0 2px 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .now-playing-album {
-        font-size: 13px;
-        color: var(--secondary-text-color, #727272);
-        margin: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .status-badge {
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: 500;
-        text-transform: uppercase;
-      }
-
-      .status-playing {
-        background: #4caf50;
-        color: #fff;
-      }
-
-      .status-paused {
-        background: #ff9800;
-        color: #fff;
-      }
-
-      .status-idle,
-      .status-off,
-      .status-unavailable {
-        background: var(--divider-color, #e0e0e0);
-        color: var(--primary-text-color);
-      }
-
-      .btn {
-        padding: 8px 16px;
-        border-radius: 4px;
-        border: none;
-        cursor: pointer;
-        background: var(--primary-color, #03a9f4);
-        color: #fff;
-        font-size: 14px;
-        font-weight: 500;
-        transition: opacity 0.2s;
-      }
-
-      .btn:hover {
-        opacity: 0.85;
-      }
-
-      .btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
-
-      .btn-row {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-top: 12px;
-      }
-
-      .search-row {
-        display: flex;
-        gap: 8px;
-        margin-bottom: 12px;
-      }
-
-      .search-input {
-        flex: 1;
-        padding: 8px 12px;
-        border-radius: 4px;
-        border: 1px solid var(--divider-color, #e0e0e0);
-        background: var(--card-background-color, #fff);
-        color: var(--primary-text-color);
-        font-size: 14px;
-        outline: none;
-      }
-
-      .search-input:focus {
-        border-color: var(--primary-color, #03a9f4);
-      }
-
-      .queue-item {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 8px 0;
-        border-bottom: 1px solid var(--divider-color, rgba(0, 0, 0, 0.12));
-      }
-
-      .queue-item:last-child {
-        border-bottom: none;
-      }
-
-      .queue-index {
-        color: var(--secondary-text-color);
-        font-size: 13px;
-        min-width: 24px;
-        text-align: center;
-      }
-
-      .queue-art {
-        width: 40px;
-        height: 40px;
-        border-radius: 4px;
-        object-fit: cover;
-        background: var(--divider-color, #e0e0e0);
-        flex-shrink: 0;
-      }
-
-      .queue-info {
-        flex: 1;
-        min-width: 0;
-      }
-
-      .queue-title {
-        font-size: 14px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .queue-artist {
-        font-size: 12px;
-        color: var(--secondary-text-color);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .result-group {
-        margin-bottom: 12px;
-      }
-
-      .result-group h3 {
-        margin: 0 0 8px 0;
-        font-size: 14px;
-        font-weight: 500;
-        color: var(--secondary-text-color);
-        text-transform: uppercase;
-      }
-
-      .result-item {
-        padding: 6px 0;
-        border-bottom: 1px solid var(--divider-color, rgba(0, 0, 0, 0.06));
-        font-size: 14px;
-      }
-
-      .result-item:last-child {
-        border-bottom: none;
-      }
-
-      .error {
-        color: var(--error-color, #db4437);
-        font-size: 14px;
-        padding: 8px 12px;
-        background: rgba(219, 68, 55, 0.1);
-        border-radius: 4px;
-        margin-bottom: 12px;
-      }
-
-      .empty {
-        color: var(--secondary-text-color);
-        font-style: italic;
-        font-size: 14px;
-        padding: 8px 0;
-      }
-
-      .connection-dot {
-        display: inline-block;
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        margin-right: 8px;
-      }
-
-      .connected {
-        background: #4caf50;
-      }
-
-      .disconnected {
-        background: #db4437;
-      }
-
-      @media (max-width: 870px) {
-        .menu-btn {
+        /* ── Queue placeholder ───────────────────── */
+        .queue-placeholder {
           display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
+          padding: var(--volumio-space-lg, 24px);
+          color: var(--secondary-text-color);
+          text-align: center;
+          gap: var(--volumio-space-sm, 8px);
         }
 
-        .state-grid {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      @media (max-width: 480px) {
-        .content {
-          padding: 8px;
+        .queue-placeholder ha-icon {
+          --mdc-icon-size: 32px;
+          opacity: 0.4;
         }
 
-        .card {
-          padding: 12px;
+        .queue-placeholder .count {
+          font-size: 13px;
         }
-      }
-    `;
+
+        /* ── Placeholder views ───────────────────── */
+        .placeholder-view {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
+          padding: var(--volumio-space-xxl, 48px);
+          text-align: center;
+          gap: var(--volumio-space-md, 16px);
+        }
+
+        .placeholder-view ha-icon {
+          --mdc-icon-size: 48px;
+          color: var(--secondary-text-color);
+          opacity: 0.3;
+        }
+
+        .placeholder-view .view-title {
+          font-size: 22px;
+          font-weight: 700;
+          color: var(--primary-text-color);
+        }
+
+        .placeholder-view .view-desc {
+          font-size: 14px;
+          color: var(--secondary-text-color);
+        }
+      `,
+    ];
   }
 
   constructor() {
     super();
     this._entityId = null;
     this._configEntryId = null;
-    this._playerState = {};
     this._queue = [];
-    this._searchResults = null;
-    this._searchQuery = "";
-    this._error = null;
-    this._queueSubId = null;
+    this._queueUnsub = null;
+    this._activeView = "now-playing";
+    this._navMode = "collapsed";
+    this._showQueue = false;
+    this._showNavFlyout = false;
+    this._sensorBase = null;
+    this._isFavorite = false;
+    this._favoritesCache = [];
+    this._lastUri = null;
+    this._keyHandler = this._onKeyDown.bind(this);
   }
-
-  // ── Lifecycle ──────────────────────────────────────────────────────
 
   connectedCallback() {
     super.connectedCallback();
-    // Note: hass is not yet set here — subscription happens in updated()
+    this._applyBreakpoint();
+    window.addEventListener("resize", this._onResize);
+    window.addEventListener("keydown", this._keyHandler);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this._unsubscribeQueue();
+    window.removeEventListener("resize", this._onResize);
+    window.removeEventListener("keydown", this._keyHandler);
   }
 
-  updated(changedProperties) {
-    if (changedProperties.has("hass") && this.hass) {
+  _onResize = () => {
+    this._applyBreakpoint();
+  };
+
+  _applyBreakpoint() {
+    const w = window.innerWidth;
+    if (w >= 1400) {
+      this._navMode = "pinned";
+      this._showQueue = true;
+    } else if (w >= 1024) {
+      this._navMode = "collapsed";
+    } else {
+      this._navMode = "hidden";
+      this._showQueue = false;
+    }
+  }
+
+  updated(changedProps) {
+    if (changedProps.has("hass") && this.hass) {
       this._resolveIds();
-      // Subscribe to queue once hass is available (first update only)
-      if (!this._queueSubId) {
+      if (!this._queueUnsub) {
         this._subscribeQueue();
+      }
+      const entity = this._getEntity();
+      const uri = entity?.attributes?.uri ?? null;
+      if (uri !== this._lastUri) {
+        this._lastUri = uri;
+        if (uri && this._configEntryId) {
+          this._checkFavorite();
+        } else {
+          this._isFavorite = false;
+        }
       }
     }
   }
 
-  // ── ID resolution ──────────────────────────────────────────────────
+  // ── ID Resolution ─────────────────────────────────────────
 
-  /**
-   * Find the volumio_ws media_player entity and config entry ID.
-   * Runs once when hass is first set, then caches.
-   */
   _resolveIds() {
     if (this._entityId && this._configEntryId) return;
 
-    // Find volumio_ws media_player entity
     if (!this._entityId) {
-      const entityId = Object.keys(this.hass.states).find(
+      let found = Object.keys(this.hass.states).find(
         (eid) =>
           eid.startsWith("media_player.") &&
           this.hass.states[eid].attributes?.volumio_ws === true
       );
-      if (!entityId) {
-        // Fallback: look for entity with volumio in the name from our domain
-        // Check entities registry via hass.entities if available, or just
-        // find any media_player with "volumio" in its entity_id
-        const fallback = Object.keys(this.hass.states).find(
+      if (!found) {
+        found = Object.keys(this.hass.states).find(
           (eid) =>
             eid.startsWith("media_player.") && eid.includes("volumio")
         );
-        if (fallback) {
-          this._entityId = fallback;
-        }
-      } else {
-        this._entityId = entityId;
+      }
+      if (found) {
+        this._entityId = found;
+        this._sensorBase = found.replace("media_player.", "");
       }
     }
 
-    // Find config entry ID for service calls
-    if (!this._configEntryId && this.hass) {
-      // panel.config may have the entry_id if we pass it during registration
-      if (this.panel?.config?.config_entry_id) {
-        this._configEntryId = this.panel.config.config_entry_id;
-      }
+    if (!this._configEntryId && this.panel?.config?.config_entry_id) {
+      this._configEntryId = this.panel.config.config_entry_id;
     }
   }
 
-  // ── Queue subscription (Layer 3) ───────────────────────────────────
+  // ── Queue Subscription ────────────────────────────────────
 
   async _subscribeQueue() {
-    if (this._queueSubId || !this.hass) return;
+    if (this._queueUnsub || !this.hass) return;
     try {
-      // Subscribe to queue updates via custom WS API
-      this._queueSubId = await this.hass.connection.subscribeMessage(
+      this._queueUnsub = await this.hass.connection.subscribeMessage(
         (msg) => {
           if (msg.queue) {
+            console.debug("[volumio-panel] Queue push received:", msg.queue.length, "items");
             this._queue = msg.queue;
           }
         },
         { type: "volumio_ws/subscribe_queue" }
       );
+      console.debug("[volumio-panel] Queue subscription active");
     } catch (err) {
       console.warn("[volumio-panel] Queue subscription failed:", err);
-      // Non-fatal — queue can be fetched via service call fallback
+    }
+
+    // Also fetch queue via service call — the subscription's initial push
+    // may have an empty coordinator queue if pushQueue hasn't arrived yet
+    if (this._configEntryId) {
+      try {
+        const result = await this.hass.connection.sendMessagePromise({
+          type: "call_service",
+          domain: "volumio_ws",
+          service: "queue_get",
+          service_data: { config_entry_id: this._configEntryId },
+          return_response: true,
+        });
+        if (result?.response?.queue) {
+          console.debug("[volumio-panel] Queue fetched via service:", result.response.queue.length, "items");
+          this._queue = result.response.queue;
+        }
+      } catch (err) {
+        console.debug("[volumio-panel] queue_get fallback failed (non-fatal):", err.message);
+      }
     }
   }
 
   _unsubscribeQueue() {
-    if (this._queueSubId) {
-      // The subscribeMessage return value is an unsubscribe function
-      if (typeof this._queueSubId === "function") {
-        this._queueSubId();
+    if (this._queueUnsub) {
+      if (typeof this._queueUnsub === "function") {
+        this._queueUnsub();
       }
-      this._queueSubId = null;
+      this._queueUnsub = null;
     }
   }
 
-  // ── Service calls ──────────────────────────────────────────────────
+  // ── Service Calls ─────────────────────────────────────────
 
-  /**
-   * Call a volumio_ws service and return the response data.
-   * Uses the raw WS connection to ensure return_response works
-   * regardless of HA frontend wrapper quirks.
-   */
-  async _callService(service, serviceData = {}) {
-    const result = await this.hass.connection.sendMessagePromise({
+  async _callService(service, data = {}) {
+    return await this.hass.connection.sendMessagePromise({
       type: "call_service",
       domain: "volumio_ws",
       service,
       service_data: {
         config_entry_id: this._configEntryId,
-        ...serviceData,
+        ...data,
       },
       return_response: true,
     });
-    return result;
   }
 
-  async _fetchQueue() {
-    if (!this._configEntryId) {
-      this._error = "No config entry ID — cannot call services.";
-      return;
-    }
-    this._error = null;
-    try {
-      const result = await this._callService("queue_get");
-      if (result?.response?.queue) {
-        this._queue = result.response.queue;
-      }
-    } catch (err) {
-      this._error = `Queue fetch failed: ${err.message || err}`;
-      console.error("[volumio-panel] queue_get error:", err);
-    }
-  }
-
-  async _doSearch() {
-    const query = this._searchQuery?.trim();
-    if (!query || !this._configEntryId) return;
-    this._error = null;
-    this._searchResults = null;
-    try {
-      const result = await this._callService("search", { query });
-      this._searchResults = result?.response || null;
-    } catch (err) {
-      this._error = `Search failed: ${err.message || err}`;
-      console.error("[volumio-panel] search error:", err);
-    }
-  }
-
-  // ── Event handlers ─────────────────────────────────────────────────
-
-  _onSearchInput(e) {
-    this._searchQuery = e.target.value;
-  }
-
-  _onSearchKeydown(e) {
-    if (e.key === "Enter") {
-      this._doSearch();
-    }
-  }
-
-  _toggleSidebar() {
-    const event = new Event("hass-toggle-menu", {
-      bubbles: true,
-      composed: true,
+  async _callMediaPlayerService(service, data = {}) {
+    return await this.hass.callService("media_player", service, {
+      entity_id: this._entityId,
+      ...data,
     });
-    this.dispatchEvent(event);
   }
 
-  // ── Render ─────────────────────────────────────────────────────────
+  // ── State Getters ─────────────────────────────────────────
+
+  _getEntity() {
+    return this._entityId ? this.hass?.states[this._entityId] : null;
+  }
+
+  _getSensorValue(key) {
+    const SENSOR_MAP = {
+      trackType: "track_type",
+      samplerate: "sample_rate",
+      bitdepth: "bit_depth",
+      channels: "channels",
+    };
+    const suffix = SENSOR_MAP[key];
+    if (!suffix || !this._sensorBase) return null;
+    const sensorId = `sensor.${this._sensorBase}_${suffix}`;
+    const sensor = this.hass?.states[sensorId];
+    return sensor?.state !== "unknown" && sensor?.state !== "unavailable"
+      ? sensor?.state
+      : null;
+  }
+
+  _getQualityInfo() {
+    const entity = this._getEntity();
+    if (!entity) return null;
+    const attrs = entity.attributes || {};
+
+    const inputs = {
+      trackType: this._getSensorValue("trackType"),
+      samplerate: this._getSensorValue("samplerate"),
+      bitdepth: this._getSensorValue("bitdepth"),
+      bitrate: attrs.bitrate || null,
+      isStream: attrs.media_content_type === "channel",
+    };
+
+    // Log quality inputs once per track change
+    const inputKey = JSON.stringify(inputs);
+    if (this._lastQualityInputKey !== inputKey) {
+      console.debug("[volumio-panel] Quality inputs:", inputs);
+      this._lastQualityInputKey = inputKey;
+    }
+
+    return detectQuality(inputs);
+  }
+
+  _isVolumeEnabled() {
+    const entity = this._getEntity();
+    if (!entity) return false;
+    const features = entity.attributes?.supported_features || 0;
+    const enabled = (features & SUPPORT_VOLUME_SET) !== 0;
+    // Debug: log when volume state seems wrong
+    if (this._lastVolumeEnabled !== enabled) {
+      console.debug("[volumio-panel] Volume enabled:", enabled, "supported_features:", features, "& 4 =", features & 4);
+      this._lastVolumeEnabled = enabled;
+    }
+    return enabled;
+  }
+
+  // ── Render ────────────────────────────────────────────────
 
   render() {
-    const entity = this._entityId ? this.hass?.states[this._entityId] : null;
+    const entity = this._getEntity();
     const attrs = entity?.attributes || {};
     const state = entity?.state || "unavailable";
+    const qualityInfo = this._getQualityInfo();
+    const artUrl = resolveArt(attrs.entity_picture, "");
+    const sources = attrs.source_list || [];
+    const volumioUrl = this.panel?.config?.volumio_url || "";
+
+    const navSources = sources.map(name => ({
+      name,
+      plugin_name: name.toLowerCase().replace(/\s+/g, ""),
+      plugin_type: "music_service",
+    }));
 
     return html`
-      <div class="toolbar">
-        <button class="menu-btn" @click=${this._toggleSidebar} title="Menu">
-          <svg viewBox="0 0 24 24">
-            <path d="M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z" />
-          </svg>
-        </button>
-        <span class="toolbar-title">Volumio</span>
-        <span class="connection-dot ${entity ? "connected" : "disconnected"}"></span>
+      <div class="shell">
+        <volumio-top-bar
+          active-view="${this._activeView}"
+          .breadcrumb=${[]}
+          ?narrow=${this.narrow}
+          @volumio-navigate=${this._onNavigate}
+          @volumio-toggle-nav=${this._onToggleNav}
+          @volumio-toggle-queue=${this._onToggleQueue}
+          @volumio-back=${this._onBack}
+        ></volumio-top-bar>
+
+        <div class="content-area">
+          ${this._renderLeftZone(navSources)}
+
+          <div class="center-zone">
+            ${this._renderCenterContent(entity, attrs, state, qualityInfo, artUrl)}
+          </div>
+
+          ${this._renderRightZone()}
+        </div>
+
+        <volumio-player-bar
+          player-state="${state}"
+          title="${attrs.media_title || ""}"
+          artist="${attrs.media_artist || ""}"
+          album-art="${artUrl}"
+          .duration=${attrs.media_duration || 0}
+          .position=${attrs.media_position || 0}
+          position-updated-at="${attrs.media_position_updated_at || ""}"
+          .volume=${attrs.volume_level != null ? Math.round(attrs.volume_level * 100) : 0}
+          ?muted=${attrs.is_volume_muted || false}
+          ?shuffle=${attrs.shuffle || false}
+          repeat="${attrs.repeat || "off"}"
+          .quality=${qualityInfo}
+          source="${attrs.source || ""}"
+          .volumeEnabled=${this._isVolumeEnabled()}
+          .isFavorite=${this._isFavorite}
+          @volumio-command=${this._onCommand}
+          @volumio-navigate=${this._onNavigate}
+          @volumio-toggle-favorite=${this._onToggleFavorite}
+        ></volumio-player-bar>
       </div>
 
-      <div class="content">
-        ${this._error ? html`<div class="error">${this._error}</div>` : ""}
-        ${this._renderNowPlaying(entity, attrs, state)}
-        ${this._renderState(attrs, state)}
-        ${this._renderQueue()}
-        ${this._renderSearch()}
-        ${this._renderDiagnostics()}
+      ${this._showNavFlyout ? html`
+        <div class="flyout-scrim" @click=${() => this._showNavFlyout = false}></div>
+        <div class="flyout-panel left">
+          <volumio-left-nav
+            .sources=${navSources}
+            mode="flyout"
+            active-view="${this._activeView}"
+            @volumio-navigate=${this._onNavigate}
+            @volumio-nav-pin=${this._onNavPin}
+          ></volumio-left-nav>
+        </div>
+      ` : ""}
+    `;
+  }
+
+  _renderLeftZone(sources) {
+    if (this._navMode === "hidden") return html``;
+
+    return html`
+      <div class="left-zone ${this._navMode}">
+        <volumio-left-nav
+          .sources=${sources}
+          mode="${this._navMode}"
+          active-view="${this._activeView}"
+          @volumio-navigate=${this._onNavigate}
+          @volumio-nav-pin=${this._onNavPin}
+        ></volumio-left-nav>
       </div>
     `;
   }
 
-  _renderNowPlaying(entity, attrs, state) {
-    if (!entity) {
-      return html`
-        <div class="card">
-          <h2>Now Playing</h2>
-          <p class="empty">No Volumio entity found. Is the integration loaded?</p>
+  _renderRightZone() {
+    if (!this._showQueue) return html``;
+
+    return html`
+      <div class="right-zone pinned">
+        <div class="queue-placeholder">
+          <ha-icon icon="mdi:playlist-music"></ha-icon>
+          <span>Queue</span>
+          <span class="count">${this._queue.length} tracks</span>
         </div>
-      `;
+      </div>
+    `;
+  }
+
+  _renderCenterContent(entity, attrs, state, qualityInfo, artUrl) {
+    switch (this._activeView) {
+      case "now-playing":
+        return html`
+          <volumio-now-playing
+            player-state="${state}"
+            title="${attrs.media_title || ""}"
+            artist="${attrs.media_artist || ""}"
+            album="${attrs.media_album_name || ""}"
+            album-art="${artUrl}"
+            .quality=${qualityInfo}
+            source="${attrs.source || ""}"
+            .isFavorite=${this._isFavorite}
+            @volumio-command=${this._onCommand}
+            @volumio-navigate=${this._onNavigate}
+            @volumio-toggle-favorite=${this._onToggleFavorite}
+          ></volumio-now-playing>
+        `;
+      case "browse":
+        return this._renderPlaceholder("Browse", "mdi:folder-music", "Browse your music sources — coming in T18");
+      case "playlists":
+        return this._renderPlaceholder("Playlists", "mdi:playlist-music-outline", "Your playlists — coming in T20");
+      case "favorites":
+        return this._renderPlaceholder("Favorites", "mdi:heart", "Your favorites — coming in T20");
+      case "history":
+        return this._renderPlaceholder("History", "mdi:history", "Recently played — coming in T20");
+      case "settings":
+        return this._renderPlaceholder("Settings", "mdi:cog", "Panel settings — coming in T20");
+      default:
+        return this._renderPlaceholder("", "mdi:help-circle", `Unknown view: ${this._activeView}`);
     }
+  }
 
-    const title = attrs.media_title || "—";
-    const artist = attrs.media_artist || "";
-    const album = attrs.media_album_name || "";
-    const imageUrl = attrs.entity_picture
-      ? attrs.entity_picture
-      : null;
-
+  _renderPlaceholder(title, icon, description) {
     return html`
-      <div class="card">
-        <h2>Now Playing</h2>
-        <div class="now-playing">
-          ${imageUrl
-            ? html`<img class="albumart" src=${imageUrl} alt="Album art" />`
-            : html`<div class="albumart"></div>`}
-          <div class="now-playing-info">
-            <p class="now-playing-title">${title}</p>
-            ${artist ? html`<p class="now-playing-artist">${artist}</p>` : ""}
-            ${album ? html`<p class="now-playing-album">${album}</p>` : ""}
-            <span class="status-badge status-${state}">${state}</span>
-          </div>
-        </div>
+      <div class="placeholder-view">
+        <ha-icon icon="${icon}"></ha-icon>
+        <div class="view-title">${title}</div>
+        <div class="view-desc">${description}</div>
       </div>
     `;
   }
 
-  _renderState(attrs, state) {
-    return html`
-      <div class="card">
-        <h2>Player State</h2>
-        <div class="state-grid">
-          <div class="state-row">
-            <span class="state-label">Volume</span>
-            <span class="state-value">${attrs.volume_level != null ? Math.round(attrs.volume_level * 100) + "%" : "—"}</span>
-          </div>
-          <div class="state-row">
-            <span class="state-label">Muted</span>
-            <span class="state-value">${attrs.is_volume_muted ? "Yes" : "No"}</span>
-          </div>
-          <div class="state-row">
-            <span class="state-label">Shuffle</span>
-            <span class="state-value">${attrs.shuffle ? "On" : "Off"}</span>
-          </div>
-          <div class="state-row">
-            <span class="state-label">Repeat</span>
-            <span class="state-value">${attrs.repeat || "off"}</span>
-          </div>
-          <div class="state-row">
-            <span class="state-label">Source</span>
-            <span class="state-value">${attrs.source || "—"}</span>
-          </div>
-          <div class="state-row">
-            <span class="state-label">Duration</span>
-            <span class="state-value">${attrs.media_duration ? this._formatTime(attrs.media_duration) : "—"}</span>
-          </div>
-        </div>
-      </div>
-    `;
+  // ── Event Handlers ────────────────────────────────────────
+
+  _onNavigate(e) {
+    const { view } = e.detail;
+    if (view) {
+      this._activeView = view;
+      this._showNavFlyout = false;
+    }
   }
 
-  _renderQueue() {
-    return html`
-      <div class="card">
-        <h2>Queue (${this._queue.length} items)</h2>
-        <div class="btn-row">
-          <button class="btn" @click=${this._fetchQueue}>Refresh Queue</button>
-        </div>
-        ${this._queue.length === 0
-          ? html`<p class="empty">Queue is empty or not yet loaded.</p>`
-          : this._queue.slice(0, 20).map(
-              (item, i) => html`
-                <div class="queue-item">
-                  <span class="queue-index">${i + 1}</span>
-                  ${item.albumart
-                    ? html`<img class="queue-art" src=${this._resolveArt(item.albumart)} alt="" />`
-                    : html`<div class="queue-art"></div>`}
-                  <div class="queue-info">
-                    <div class="queue-title">${item.name || item.title || "—"}</div>
-                    <div class="queue-artist">${item.artist || ""}</div>
-                  </div>
-                </div>
-              `
-            )}
-        ${this._queue.length > 20
-          ? html`<p class="empty">...and ${this._queue.length - 20} more</p>`
-          : ""}
-      </div>
-    `;
+  _onToggleNav() {
+    if (this._navMode === "hidden") {
+      this._showNavFlyout = !this._showNavFlyout;
+    } else if (this._navMode === "collapsed") {
+      this._navMode = "pinned";
+    } else {
+      this._navMode = "collapsed";
+    }
   }
 
-  _renderSearch() {
-    return html`
-      <div class="card">
-        <h2>Search</h2>
-        <div class="search-row">
-          <input
-            class="search-input"
-            type="text"
-            placeholder="Search Volumio..."
-            .value=${this._searchQuery}
-            @input=${this._onSearchInput}
-            @keydown=${this._onSearchKeydown}
-          />
-          <button class="btn" @click=${this._doSearch} ?disabled=${!this._searchQuery?.trim()}>
-            Search
-          </button>
-        </div>
-        ${this._renderSearchResults()}
-      </div>
-    `;
+  _onNavPin(e) {
+    this._navMode = e.detail.pinned ? "pinned" : "collapsed";
+    this._showNavFlyout = false;
   }
 
-  _renderSearchResults() {
-    if (!this._searchResults) return "";
+  _onToggleQueue() {
+    this._showQueue = !this._showQueue;
+  }
 
-    const data = this._searchResults;
+  _onBack() {
+    if (this._activeView !== "now-playing") {
+      this._activeView = "now-playing";
+    }
+  }
 
-    // Search results from Volumio come as a navigation list
-    // with items grouped by source/type.
-    if (data.navigation?.lists) {
-      // Filter out:
-      // - Empty lists (no items)
-      // - Filter/button chrome (isFiltersAndButtons: true)
-      const lists = data.navigation.lists.filter(
-        (list) => !list.isFiltersAndButtons && list.items?.length > 0
-      );
+  async _onCommand(e) {
+    const { command, value } = e.detail;
+    const entity = this._getEntity();
+    if (!entity || !this._entityId) return;
 
-      if (lists.length === 0) {
-        return html`<p class="empty">No results found.</p>`;
+    try {
+      switch (command) {
+        case "play_pause":
+          if (entity.state === "playing") {
+            await this._callMediaPlayerService("media_pause");
+          } else {
+            await this._callMediaPlayerService("media_play");
+          }
+          break;
+        case "next":
+          await this._callMediaPlayerService("media_next_track");
+          break;
+        case "prev":
+          await this._callMediaPlayerService("media_previous_track");
+          break;
+        case "seek":
+          await this._callMediaPlayerService("media_seek", { seek_position: value });
+          break;
+        case "volume_set":
+          if (this._isVolumeEnabled()) {
+            await this._callMediaPlayerService("set_volume_level", { volume_level: value / 100 });
+          } else {
+            console.debug("[volumio-panel] Volume set ignored — volume control disabled");
+          }
+          break;
+        case "mute_toggle":
+          if (this._isVolumeEnabled()) {
+            await this._callMediaPlayerService("volume_mute", {
+              is_volume_muted: !entity.attributes?.is_volume_muted,
+            });
+          } else {
+            console.debug("[volumio-panel] Mute ignored — volume control disabled");
+          }
+          break;
+        case "shuffle_set":
+          await this._callMediaPlayerService("shuffle_set", { shuffle: value });
+          break;
+        case "repeat_set":
+          await this._callMediaPlayerService("repeat_set", { repeat: value });
+          break;
+        default:
+          console.warn("[volumio-panel] Unknown command:", command);
       }
-
-      return html`
-        ${lists.map(
-          (list) => html`
-            <div class="result-group">
-              <h3>${list.title || "Results"}</h3>
-              ${(list.items || []).slice(0, 10).map(
-                (item) => html`
-                  <div class="result-item">
-                    ${item.title || item.name || "—"}
-                    ${item.artist ? html` — <span style="color:var(--secondary-text-color)">${item.artist}</span>` : ""}
-                  </div>
-                `
-              )}
-              ${(list.items || []).length > 10
-                ? html`<div class="result-item empty">...${list.items.length - 10} more</div>`
-                : ""}
-            </div>
-          `
-        )}
-      `;
+    } catch (err) {
+      console.error("[volumio-panel] Command failed:", command, err);
     }
-
-    // Fallback: dump as JSON for debugging
-    return html`<pre style="font-size:12px;overflow:auto;max-height:200px">${JSON.stringify(data, null, 2)}</pre>`;
   }
 
-  _renderDiagnostics() {
-    return html`
-      <div class="card">
-        <h2>Diagnostics</h2>
-        <div class="state-grid">
-          <div class="state-row">
-            <span class="state-label">Entity ID</span>
-            <span class="state-value">${this._entityId || "not found"}</span>
-          </div>
-          <div class="state-row">
-            <span class="state-label">Config Entry</span>
-            <span class="state-value">${this._configEntryId || "not found"}</span>
-          </div>
-          <div class="state-row">
-            <span class="state-label">Queue Sub</span>
-            <span class="state-value">${this._queueSubId ? "active" : "inactive"}</span>
-          </div>
-          <div class="state-row">
-            <span class="state-label">Hass</span>
-            <span class="state-value">${this.hass ? "connected" : "disconnected"}</span>
-          </div>
-        </div>
-      </div>
-    `;
+  async _checkFavorite() {
+    if (!this.hass || !this._configEntryId) return;
+    try {
+      const result = await this.hass.connection.sendMessagePromise({
+        type: "call_service",
+        domain: "volumio_ws",
+        service: "favorites_list",
+        service_data: { config_entry_id: this._configEntryId },
+        return_response: true,
+      });
+      const items = result?.response?.items || [];
+      this._favoritesCache = items;
+      const entity = this._getEntity();
+      const uri = entity?.attributes?.uri;
+      this._isFavorite = !!(uri && items.some((it) => it?.uri === uri));
+    } catch (err) {
+      console.error("[volumio-panel] favorites_list failed:", err);
+    }
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────
+  async _onToggleFavorite() {
+    const entity = this._getEntity();
+    if (!entity || !this._configEntryId) return;
+    const attrs = entity.attributes || {};
+    const uri = attrs.uri;
+    if (!uri) return;
 
-  _formatTime(seconds) {
-    if (!seconds || seconds <= 0) return "0:00";
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return `${m}:${s.toString().padStart(2, "0")}`;
+    const wasFavorite = this._isFavorite;
+    this._isFavorite = !wasFavorite;
+
+    console.debug("[volumio-panel] Toggle favorite:", { wasFavorite, uri, title: attrs.media_title, service: attrs.source, configEntryId: this._configEntryId });
+
+    try {
+      if (wasFavorite) {
+        await this._callService("favorites_remove", {
+          uri,
+          service: attrs.source || "",
+        });
+      } else {
+        await this._callService("favorites_add", {
+          uri,
+          title: attrs.media_title || "",
+          service: attrs.source || "",
+        });
+      }
+      console.debug("[volumio-panel] Favorite service call completed");
+      setTimeout(() => this._checkFavorite(), 500);
+    } catch (err) {
+      console.error("[volumio-panel] Favorite toggle failed:", err);
+      this._isFavorite = wasFavorite;
+    }
   }
 
-  _resolveArt(albumart) {
-    if (!albumart) return "";
-    if (albumart.startsWith("http")) return albumart;
-    // Relative URL — resolve against Volumio base URL.
-    // The panel.config should have the Volumio host info.
-    const base = this.panel?.config?.volumio_url || "";
-    return base ? `${base}${albumart}` : albumart;
+  // ── Keyboard Shortcuts ────────────────────────────────────
+
+  _onKeyDown(e) {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if (!this.isConnected) return;
+
+    const entity = this._getEntity();
+    if (!entity) return;
+
+    switch (e.key) {
+      case " ":
+        e.preventDefault();
+        this._onCommand({ detail: { command: "play_pause" } });
+        break;
+      case "ArrowRight":
+        if (e.shiftKey) {
+          e.preventDefault();
+          this._onCommand({ detail: { command: "next" } });
+        } else {
+          e.preventDefault();
+          const pos = (entity.attributes?.media_position || 0) + 10;
+          this._onCommand({ detail: { command: "seek", value: pos } });
+        }
+        break;
+      case "ArrowLeft":
+        if (e.shiftKey) {
+          e.preventDefault();
+          this._onCommand({ detail: { command: "prev" } });
+        } else {
+          e.preventDefault();
+          const pos2 = Math.max(0, (entity.attributes?.media_position || 0) - 10);
+          this._onCommand({ detail: { command: "seek", value: pos2 } });
+        }
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        {
+          const vol = Math.min(100, Math.round((entity.attributes?.volume_level || 0) * 100) + 2);
+          this._onCommand({ detail: { command: "volume_set", value: vol } });
+        }
+        break;
+      case "ArrowDown":
+        e.preventDefault();
+        {
+          const vol2 = Math.max(0, Math.round((entity.attributes?.volume_level || 0) * 100) - 2);
+          this._onCommand({ detail: { command: "volume_set", value: vol2 } });
+        }
+        break;
+      case "m":
+      case "M":
+        this._onCommand({ detail: { command: "mute_toggle" } });
+        break;
+      case "s":
+      case "S":
+        this._onCommand({ detail: { command: "shuffle_set", value: !entity.attributes?.shuffle } });
+        break;
+      case "r":
+      case "R":
+        {
+          const current = entity.attributes?.repeat || "off";
+          const next = current === "off" ? "all" : current === "all" ? "one" : "off";
+          this._onCommand({ detail: { command: "repeat_set", value: next } });
+        }
+        break;
+      case "/":
+        e.preventDefault();
+        this.shadowRoot?.querySelector("volumio-top-bar")
+          ?.shadowRoot?.querySelector(".search-field input")
+          ?.focus();
+        break;
+      case "Escape":
+        this._showNavFlyout = false;
+        break;
+    }
   }
 }
 

@@ -133,10 +133,16 @@ class VolumioWebSocketCoordinator:
     def _on_push_browse_sources(self, data: Any) -> None:
         """Handle pushBrowseSources event."""
         self._browse_sources = data if isinstance(data, list) else []
+        _LOGGER.debug(
+            "Received pushBrowseSources: %d items: %s",
+            len(self._browse_sources),
+            [s.get("name") for s in self._browse_sources],
+        )
         # Resolve pending future if someone is awaiting this
         future = self._pending_responses.pop("getBrowseSources", None)
         if future and not future.done():
             future.set_result(self._browse_sources)
+        self.hass.loop.call_soon_threadsafe(self._notify_state_listeners)
 
     def _on_push_multiroom(self, data: Any) -> None:
         """Handle pushMultiRoomDevices event."""
@@ -523,6 +529,23 @@ class VolumioWebSocketCoordinator:
 
     # ── Favorites methods ─────────────────────────────────────────────
 
+    async def async_list_favourites(self) -> list[dict[str, Any]]:
+        """List favourite tracks.
+
+        Returns:
+            List of favourite items (each typically has uri, title, service).
+        """
+        result = await self.async_browse("favourites")
+        if not isinstance(result, dict):
+            return []
+        nav = result.get("navigation") or {}
+        lists = nav.get("lists") or []
+        items: list[dict[str, Any]] = []
+        for lst in lists:
+            if isinstance(lst, dict) and isinstance(lst.get("items"), list):
+                items.extend(lst["items"])
+        return items
+
     async def async_add_to_favourites(
         self, item: dict[str, Any]
     ) -> dict[str, Any]:
@@ -535,6 +558,7 @@ class VolumioWebSocketCoordinator:
         Returns:
             Acknowledgment dict.
         """
+        _LOGGER.debug("async_add_to_favourites called with: %s", item)
         await self.async_emit(WS_ADD_TO_FAVOURITES, item)
         return {"success": True, "command": "addToFavourites"}
 
@@ -550,5 +574,6 @@ class VolumioWebSocketCoordinator:
         Returns:
             Acknowledgment dict.
         """
+        _LOGGER.debug("async_remove_from_favourites called with: %s", item)
         await self.async_emit(WS_REMOVE_FROM_FAVOURITES, item)
         return {"success": True, "command": "removeFromFavourites"}

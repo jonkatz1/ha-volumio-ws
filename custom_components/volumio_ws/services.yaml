@@ -345,6 +345,19 @@ playlist_enqueue:
 
 # ── Favorites services ───────────────────────────────────────────────
 
+favorites_list:
+  name: List Favorites
+  description: >-
+    Return the list of Volumio favorites. Response shape: { items: [...] }.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+
 favorites_add:
   name: Add to Favorites
   description: >-

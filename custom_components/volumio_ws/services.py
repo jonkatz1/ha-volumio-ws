@@ -39,6 +39,7 @@ SERVICE_PLAYLIST_REMOVE_TRACK = "playlist_remove_track"
 SERVICE_PLAYLIST_PLAY = "playlist_play"
 SERVICE_PLAYLIST_ENQUEUE = "playlist_enqueue"
 # Favorites
+SERVICE_FAVORITES_LIST = "favorites_list"
 SERVICE_FAVORITES_ADD = "favorites_add"
 SERVICE_FAVORITES_REMOVE = "favorites_remove"
 
@@ -168,6 +169,12 @@ SERVICE_PLAYLIST_ENQUEUE_SCHEMA = vol.Schema(
 )
 
 # -- Favorites --
+SERVICE_FAVORITES_LIST_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
+    }
+)
+
 SERVICE_FAVORITES_ADD_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
@@ -421,6 +428,18 @@ async def _async_handle_playlist_enqueue(
 
 # -- Favorites --
 
+async def _async_handle_favorites_list(
+    hass: HomeAssistant, call: ServiceCall
+) -> ServiceResponse:
+    """Handle the favorites_list service call."""
+    coordinator = _get_coordinator(hass, call)
+    items = await coordinator.async_list_favourites()
+
+    if call.return_response:
+        return {"items": items}
+    return None
+
+
 async def _async_handle_favorites_add(
     hass: HomeAssistant, call: ServiceCall
 ) -> ServiceResponse:
@@ -514,6 +533,9 @@ def register_services(hass: HomeAssistant) -> None:
 
     async def handle_playlist_enqueue(call: ServiceCall) -> ServiceResponse:
         return await _async_handle_playlist_enqueue(hass, call)
+
+    async def handle_favorites_list(call: ServiceCall) -> ServiceResponse:
+        return await _async_handle_favorites_list(hass, call)
 
     async def handle_favorites_add(call: ServiceCall) -> ServiceResponse:
         return await _async_handle_favorites_add(hass, call)
@@ -628,6 +650,13 @@ def register_services(hass: HomeAssistant) -> None:
     )
 
     # Favorites
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_FAVORITES_LIST,
+        handle_favorites_list,
+        schema=SERVICE_FAVORITES_LIST_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
     hass.services.async_register(
         DOMAIN,
         SERVICE_FAVORITES_ADD,
