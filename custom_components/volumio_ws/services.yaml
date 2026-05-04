@@ -19,6 +19,43 @@ search:
       selector:
         text:
 
+browse:
+  name: Browse Library
+  description: >-
+    Browse the Volumio library at a given URI.
+    Returns navigation lists with items (folders, albums, tracks, etc.).
+    Call with no URI to get top-level browse sources.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device to browse.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    uri:
+      name: URI
+      description: >-
+        The browse URI to navigate to. Leave empty for root sources.
+      required: false
+      example: "music-library"
+      selector:
+        text:
+
+get_browse_sources:
+  name: Get Browse Sources
+  description: >-
+    Get the list of configured browse sources from Volumio.
+    Returns sources with name, URI, plugin info, and album art.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device to query.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+
 # ── Queue services ───────────────────────────────────────────────────
 
 queue_get:

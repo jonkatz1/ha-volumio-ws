@@ -23,6 +23,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # ── Service names ────────────────────────────────────────────────────
 SERVICE_SEARCH = "search"
+SERVICE_BROWSE = "browse"
+SERVICE_GET_BROWSE_SOURCES = "get_browse_sources"
 # Queue
 SERVICE_QUEUE_GET = "queue_get"
 SERVICE_QUEUE_ADD = "queue_add"
@@ -65,6 +67,19 @@ SERVICE_SEARCH_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
         vol.Required(ATTR_QUERY): cv.string,
+    }
+)
+
+SERVICE_BROWSE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
+        vol.Optional(ATTR_URI, default=""): cv.string,
+    }
+)
+
+SERVICE_GET_BROWSE_SOURCES_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
     }
 )
 
@@ -238,6 +253,36 @@ async def _async_handle_search(
 
     if call.return_response:
         return result if isinstance(result, dict) else {"results": []}
+    return None
+
+
+# -- Browse --
+
+async def _async_handle_browse(
+    hass: HomeAssistant, call: ServiceCall
+) -> ServiceResponse:
+    """Handle the browse service call."""
+    coordinator = _get_coordinator(hass, call)
+    uri: str = call.data.get(ATTR_URI, "")
+
+    result = await coordinator.async_browse(uri)
+
+    if call.return_response:
+        return result if isinstance(result, dict) else {"navigation": {"lists": []}}
+    return None
+
+
+# -- Browse Sources --
+
+async def _async_handle_get_browse_sources(
+    hass: HomeAssistant, call: ServiceCall
+) -> ServiceResponse:
+    """Handle the get_browse_sources service call."""
+    coordinator = _get_coordinator(hass, call)
+    sources = await coordinator.async_get_browse_sources()
+
+    if call.return_response:
+        return {"sources": sources if isinstance(sources, list) else []}
     return None
 
 
@@ -495,6 +540,12 @@ def register_services(hass: HomeAssistant) -> None:
     async def handle_search(call: ServiceCall) -> ServiceResponse:
         return await _async_handle_search(hass, call)
 
+    async def handle_browse(call: ServiceCall) -> ServiceResponse:
+        return await _async_handle_browse(hass, call)
+
+    async def handle_get_browse_sources(call: ServiceCall) -> ServiceResponse:
+        return await _async_handle_get_browse_sources(hass, call)
+
     async def handle_queue_get(call: ServiceCall) -> ServiceResponse:
         return await _async_handle_queue_get(hass, call)
 
@@ -551,6 +602,24 @@ def register_services(hass: HomeAssistant) -> None:
         SERVICE_SEARCH,
         handle_search,
         schema=SERVICE_SEARCH_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    # Browse
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_BROWSE,
+        handle_browse,
+        schema=SERVICE_BROWSE_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    # Browse Sources
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_BROWSE_SOURCES,
+        handle_get_browse_sources,
+        schema=SERVICE_GET_BROWSE_SOURCES_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
 

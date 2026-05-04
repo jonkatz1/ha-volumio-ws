@@ -30,6 +30,9 @@ class VolumioTopBar extends LitElement {
       breadcrumb: { type: Array },
       showBackButton: { type: Boolean, attribute: "show-back-button" },
       narrow: { type: Boolean },
+      searchQuery: { type: String, attribute: "search-query" },
+      _searchValue: { type: String, state: true },
+      _searchFocused: { type: Boolean, state: true },
     };
   }
 
@@ -147,6 +150,75 @@ class VolumioTopBar extends LitElement {
         cursor: not-allowed;
       }
 
+      .search-clear {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: none;
+        background: var(--secondary-text-color, #888);
+        color: var(--primary-background-color, #121212);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        flex-shrink: 0;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+      }
+
+      .search-clear:hover {
+        background: var(--primary-text-color);
+      }
+
+      .recent-searches {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        left: 0;
+        margin: 0 var(--volumio-space-sm, 8px);
+        background: var(--card-background-color, #1e1e1e);
+        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+        border-radius: 8px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+        padding: var(--volumio-space-sm, 8px);
+        z-index: 110;
+        max-width: 320px;
+        margin-left: auto;
+      }
+
+      .recent-label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--secondary-text-color);
+        padding: 4px 8px;
+      }
+
+      .recent-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding: 4px;
+      }
+
+      .recent-chip {
+        padding: 4px 12px;
+        border-radius: 14px;
+        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+        background: transparent;
+        color: var(--primary-text-color);
+        font-size: 13px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+
+      .recent-chip:hover {
+        background: var(--divider-color, rgba(255, 255, 255, 0.08));
+      }
+
       .breadcrumb-row {
         display: flex;
         align-items: center;
@@ -206,6 +278,11 @@ class VolumioTopBar extends LitElement {
     this.breadcrumb = [];
     this.showBackButton = false;
     this.narrow = false;
+    this.searchQuery = "";
+    this._searchValue = "";
+    this._searchFocused = false;
+    this._debounceTimer = null;
+    this._recentSearches = JSON.parse(localStorage.getItem("volumio-recent-searches") || "[]");
   }
 
   render() {
@@ -244,15 +321,33 @@ class VolumioTopBar extends LitElement {
 
         <div class="spacer"></div>
 
-        <div class="search-field" @click=${this._focusSearch} title="Search coming in a future update">
+        <div class="search-field" @click=${this._focusSearch} title="Search music">
           <ha-icon icon="mdi:magnify"></ha-icon>
           <input
             type="text"
-            placeholder="Search (coming soon)..."
-            aria-label="Search music — coming soon"
-            disabled
+            placeholder="Search..."
+            aria-label="Search music"
+            .value=${this._searchValue}
+            @input=${this._onSearchInput}
+            @focus=${this._onSearchFieldFocus}
+            @blur=${this._onSearchFieldBlur}
+            @keydown=${this._onSearchKeydown}
           />
+          ${this._searchValue ? html`
+            <button class="search-clear" @click=${this._clearSearch} title="Clear search" aria-label="Clear search">✕</button>
+          ` : ""}
         </div>
+
+        ${this._searchFocused && !this._searchValue && this._recentSearches.length > 0 ? html`
+          <div class="recent-searches">
+            <div class="recent-label">Recent</div>
+            <div class="recent-chips">
+              ${this._recentSearches.slice(0, 10).map(q => html`
+                <button class="recent-chip" @mousedown=${(e) => { e.preventDefault(); this._useRecentSearch(q); }}>${q}</button>
+              `)}
+            </div>
+          </div>
+        ` : ""}
 
         <button
           class="icon-btn"
@@ -320,6 +415,71 @@ class VolumioTopBar extends LitElement {
   _focusSearch() {
     const input = this.shadowRoot.querySelector(".search-field input");
     if (input) input.focus();
+  }
+
+  _onSearchFieldFocus() {
+    this._searchFocused = true;
+  }
+
+  _onSearchFieldBlur() {
+    // Delay to allow chip clicks to register
+    setTimeout(() => { this._searchFocused = false; }, 200);
+  }
+
+  _onSearchInput(e) {
+    this._searchValue = e.target.value;
+    clearTimeout(this._debounceTimer);
+
+    if (this._searchValue.trim().length < 2) {
+      // Clear search results if query too short
+      if (this._searchValue.trim().length === 0) {
+        this.dispatchEvent(new CustomEvent("volumio-search-clear", {
+          bubbles: true, composed: true,
+        }));
+      }
+      return;
+    }
+
+    this._debounceTimer = setTimeout(() => {
+      this._executeSearch(this._searchValue.trim());
+    }, 300);
+  }
+
+  _onSearchKeydown(e) {
+    if (e.key === "Escape") {
+      this._clearSearch();
+      e.target.blur();
+    } else if (e.key === "Enter") {
+      clearTimeout(this._debounceTimer);
+      if (this._searchValue.trim().length >= 2) {
+        this._executeSearch(this._searchValue.trim());
+      }
+    }
+  }
+
+  _executeSearch(query) {
+    // Save to recent searches
+    this._recentSearches = [query, ...this._recentSearches.filter(q => q !== query)].slice(0, 10);
+    localStorage.setItem("volumio-recent-searches", JSON.stringify(this._recentSearches));
+
+    this.dispatchEvent(new CustomEvent("volumio-search", {
+      detail: { query },
+      bubbles: true, composed: true,
+    }));
+  }
+
+  _clearSearch() {
+    this._searchValue = "";
+    clearTimeout(this._debounceTimer);
+    this.dispatchEvent(new CustomEvent("volumio-search-clear", {
+      bubbles: true, composed: true,
+    }));
+  }
+
+  _useRecentSearch(query) {
+    this._searchValue = query;
+    this._searchFocused = false;
+    this._executeSearch(query);
   }
 
   _onSearchFocus() {

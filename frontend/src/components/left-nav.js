@@ -208,7 +208,7 @@ class VolumioLeftNav extends LitElement {
           <div class="nav-section-label ${isCollapsed ? "collapsed" : ""}">Sources</div>
           ${this.sources.map(src => {
             const icon = SOURCE_ICONS[src.plugin_name] || SOURCE_ICONS[src.plugin_type] || "mdi:music-box";
-            const isActive = this.activeSource === src.plugin_name;
+            const isActive = this.activeSource === src.uri;
             return html`
               <button
                 class="nav-item ${isActive ? "active" : ""}"
@@ -262,7 +262,12 @@ class VolumioLeftNav extends LitElement {
 
   _selectSource(source) {
     this.dispatchEvent(new CustomEvent("volumio-navigate", {
-      detail: { view: "browse", source: source.plugin_name, sourceUri: source.uri },
+      detail: {
+        view: "browse",
+        source: source.name,
+        sourceUri: source.uri,
+        pluginName: source.plugin_name,
+      },
       bubbles: true, composed: true,
     }));
   }

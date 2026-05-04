@@ -12,7 +12,7 @@
 | 1 | `transport.py` + `coordinator.py` | `EIO3Transport` — raw aiohttp WebSocket, EIO3 protocol framing, ping/pong, reconnection. `VolumioWebSocketCoordinator` — state cache, listeners, request/reply futures on top of the transport. |
 | 2 | HA Services | `services.py` — thin wrappers exposing coordinator methods as HA services. Registered in `async_setup` (domain-level). Uses `config_entry_id` targeting and `SupportsResponse` for response data. |
 | 3 | HA WebSocket API | Panel-specific real-time endpoints (push state/queue to frontend). |
-| 4 | Panel Frontend | JavaScript sidebar panel (not yet present in repo). |
+| 4 | Panel Frontend | Lit-based sidebar panel under `frontend/src/` (18 components). Built bundle ≈151 KB at `custom_components/volumio_ws/frontend/volumio-panel.js`. |
 
 Rule: each layer calls only the layer directly below. Coordinator methods MUST return response data — no fire-and-forget.
 
@@ -26,6 +26,8 @@ Rule: each layer calls only the layer directly below. Coordinator methods MUST r
 | T5-8 — Core polish | DONE | Extra state attrs, source list, sw_version, shuffle fix. Branch: `feat/T5-8-core-polish`, merged to main. |
 | T11+T9 — Services + Search | DONE | Service infrastructure (`services.py`, `services.yaml`) + search service. `config_entry_id` targeting, `async_setup` registration, `SupportsResponse.OPTIONAL`. Branch: `feat/T11-9-services`. |
 | T12-14 — Services (queue/playlist/favorites) | DONE | 15 new services, async closure fix. Branch: `feat/T12-14-services`. |
+| T17 — Panel layout shell, player bar, Now Playing | DONE | Three-zone responsive layout, player bar with smooth progress interpolation, Now Playing hero with UltraBlur, quality badges (5-tier detection), source badges, left nav with browse sources, keyboard shortcuts, favorite heart toggle with state, loading/skeleton states. New backend: `favorites_list` service, `bitrate` + `source_list` in `extra_state_attributes`, browse-sources state notification. |
+| T18 — Browse, search, album/artist detail | DONE | 8 new frontend components, 2 new backend services (`browse`, `get_browse_sources`). Browse source grid, list/grid toggle, album/artist detail, search with debounce + grouping + recent searches, breadcrumb navigation with search trail, alpha jump index, basic queue panel, add-to-queue buttons on cards/rows. Branch: `feat/T18-panel-browse-search`. |
 
 Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-initiated PING (`2`) every 23s, server responds PONG (`3`) within 5s. Reconnection with exponential backoff (5s → 60s cap). No external dependencies — aiohttp is HA-native.
 
@@ -54,14 +56,33 @@ Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-init
 | `const.py` | DOMAIN, defaults (port 3000), WS event name constants. |
 | `config_flow.py` | UI config flow — `async_test_connect` for host/port validation, zeroconf discovery handler. |
 | `transport.py` | `EIO3Transport` — raw aiohttp WebSocket, EIO3 framing, client-initiated PING/PONG, exponential-backoff reconnection. |
-| `coordinator.py` | `VolumioWebSocketCoordinator` — runs on top of `EIO3Transport`; owns state cache, listeners, request/reply futures. Emits `getBrowseSources` on connect; exposes `browse_sources`, `browse_source_names`, `sw_version`. Queue/playlist/favorites methods (`async_get_queue`, `async_add_to_queue`, `async_list_playlists`, `async_add_to_favourites`, etc — 15 methods total). Push handlers for `pushQueue` and `pushListPlaylist` now resolve request/reply futures. |
-| `media_player.py` | `MediaPlayerEntity` — playback controls, volume, browse_media. `extra_state_attributes` (queue_position, uri, volatile); `source_list` from browse sources; shuffle null→false fix; `SELECT_SOURCE` removed from supported features. |
+| `coordinator.py` | `VolumioWebSocketCoordinator` — runs on top of `EIO3Transport`; owns state cache, listeners, request/reply futures. Emits `getBrowseSources` on connect; exposes `browse_sources`, `browse_source_names`, `sw_version`. Queue/playlist/favorites methods (`async_get_queue`, `async_add_to_queue`, `async_list_playlists`, `async_list_favourites`, `async_add_to_favourites`, etc). Push handlers for `pushQueue`, `pushListPlaylist`, and `pushBrowseSources` resolve request/reply futures and notify state listeners. |
+| `media_player.py` | `MediaPlayerEntity` — playback controls, volume, browse_media. `extra_state_attributes` (queue_position, uri, volatile, bitrate, source_list); shuffle null→false fix; `SELECT_SOURCE` removed from supported features. |
 | `sensor.py` | Sensor entities for Volumio audio metadata (sample rate, bit depth, etc.). |
 | `browse_media.py` | Browse-media tree builder over coordinator's `async_browse` / `async_get_browse_sources`. |
-| `services.py` | Service handlers — `register_services()` called from `async_setup`. 16 services total: search, queue (get/add/remove/move/clear/play_index), playlist (list/create/delete/add_track/remove_track/play/enqueue), favorites (add/remove). Uses async closures for HA `SupportsResponse` compatibility. |
-| `services.yaml` | Service schema definitions for HA UI. 16 services defined. |
+| `services.py` | Service handlers — `register_services()` called from `async_setup`. 20 services total: search, browse, get_browse_sources, queue (get/add/remove/move/clear/play_index), playlist (list/create/delete/add_track/remove_track/play/enqueue), favorites (list/add/remove). Uses async closures for HA `SupportsResponse` compatibility. |
+| `services.yaml` | Service schema definitions for HA UI. 20 services defined. |
 | `strings.json` | UI strings for config flow. |
 | `translations/en.json` | English translations. |
+| `frontend/volumio-panel.js` | Built panel bundle (~82 KB) — output of `cd frontend && npm run build` from `frontend/src/volumio-panel.js`. |
+
+## Frontend (`frontend/src/`)
+- `volumio-panel.js` — root panel: three-zone layout, view routing (`now-playing` / `browse` / `playlists` / `favorites` / `album-detail` / `artist-detail` / `search-results`), HA service plumbing (`_callService`, queue subscription, favorites caching via `volumio_ws/favorites_list`), keyboard shortcuts. Browse/search state management, navigation stack, search trail, browse-sources cache, queue panel with track list, service display name map.
+- `components/top-bar.js` — tabs (Now Playing, Browse, Playlists, Favorites), nav/queue toggles, search affordance. Live search with 300 ms debounce, recent search chips, clear button.
+- `components/left-nav.js` — browse sources nav, pinned/collapsed/flyout modes. Active source highlighting by URI.
+- `components/now-playing.js` — hero view with album art, UltraBlur dominant-color background (HSL-boosted, 50%/40% origin), favorite heart, quality + source badges, skeleton loading state.
+- `components/player-bar.js` — bottom bar with smooth `requestAnimationFrame` progress interpolation, controls, track info + favorite heart, quality + source badges, volume section gated on `volumeEnabled`, skeleton loading state.
+- `components/quality-badge.js` / `source-badge.js` — pill badges driven by `quality-utils` and the service name.
+- `components/breadcrumb-bar.js` — navigation breadcrumb, max 5 segments with collapse.
+- `components/browse-source-grid.js` — top-level source card grid with icons, albumart, click-to-browse.
+- `components/browse-list.js` — list/grid view with toggle (localStorage), compact mode, alpha jump index, load-more pagination.
+- `components/album-card.js` — reusable album grid card (180px). Hover: play + add-to-queue overlay.
+- `components/track-card.js` — reusable track list row (48px). Compact mode. Add-to-queue button. Playing state.
+- `components/album-detail.js` — album header + track listing. Play and Add to Queue buttons.
+- `components/artist-detail.js` — artist albums grid, placeholder bio/similar sections.
+- `components/search-results.js` — grouped by source then type, collapsible, show-all expansion.
+- `utils/quality-utils.js` — 5-tier detection (hires / lossless / high / basic / stream / unknown). Treats Volumio service names (`qobuz`, `tidal`, …) as unknown codec and infers tier from bitdepth/samplerate.
+- `styles/shared-styles.js` — design tokens, focus ring, reduced-motion handling. Theme-aware via HA CSS vars.
 
 ## Key Conventions
 - Branches: `feat/T{N}-description`
@@ -73,10 +94,35 @@ Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-init
 ## Decisions
 - `SELECT_SOURCE` intentionally omitted from supported features. Volumio browse sources open navigation trees, not playback targets — they don't map to HA's source-select semantics. `source` returns the raw service name (`mpd`, `qobuz`, etc.) because multiple browse sources share the same `plugin_name`.
 - `source_list` still populates with browse-source display names but is only visible via entity attributes (not the HA UI dropdown) since `SELECT_SOURCE` is removed.
+- `source_list` is published through `extra_state_attributes` (not the standard `source_list` property) precisely because HA only emits the latter when `SELECT_SOURCE` is supported.
 - Services use `config_entry_id` (required) for targeting, not `entity_id`. Per HA docs: "target the thing the action acts on." Search operates on the Volumio device (config entry), not a specific entity. No auto-select fallback.
 - Services registered in `async_setup` (domain-level, once per HA lifetime), not `async_setup_entry`. Per HA docs and music_assistant pattern. No unregistration needed.
 - Mutation services (`queue_add`, `queue_remove`, `playlist_create`, `favorites_add`, etc.) return acknowledgment dicts (`{"success": True, "command": "..."}`) rather than re-fetching updated state. Panel should call the corresponding get/list service after mutations to refresh. Can upgrade to re-fetch pattern later if needed.
 - Service handlers use async closures (not lambdas) to capture `hass`. Lambdas break `SupportsResponse` because `asyncio.iscoroutinefunction()` returns False for them.
+- Browse source URIs come from Volumio's `getBrowseSources` response (cached on coordinator, exposed via `get_browse_sources` service). Never guess URIs from source names.
+- Volumio search result items may have `type: "folder"` even for albums. Panel infers correct type from section title.
+- Service names mapped to display labels via `SERVICE_DISPLAY` map: `mpd`→Local, `qobuz`→Qobuz, `tidal`→TIDAL, etc.
+
+## Key Learnings
+- Lit boolean attribute binding (`?attr=${false}`) removes the attribute, leaving the constructor default in place. For booleans that default to `true`, use property binding (`.prop=${...}`) so `false` actually overrides.
+- HA only exposes `source_list` on the entity state when `SELECT_SOURCE` is in `supported_features`. Without that flag, populate it via `extra_state_attributes` so the panel can still read it.
+- Volumio's `trackType` sometimes carries the service name (`qobuz`, `tidal`, `spotify`, …) instead of a codec. Quality-tier detection has to recognize service names and infer the tier from `bitdepth` / `samplerate` / `bitrate` instead of the format string.
+- Same-origin HA proxy images (e.g. `/api/media_player_proxy/...`) work for `<canvas>` extraction without `crossorigin="anonymous"`. Adding it forces a CORS preflight and taints the canvas, breaking `getImageData`.
+- The panel currently resolves `_configEntryId` by scanning `hass.states` for a media_player; with multiple Volumio instances this can pick the wrong one. A device-selector dropdown is needed for multi-device support.
+- Volumio `browseLibrary` returns different item structures per source. Handle missing `artist`, `album`, `duration`, `albumart` gracefully.
+- Browse source URIs have no consistent pattern: `qobuz://`, `tidal://`, `artists://`, `music-library`, `/pandora`, `Last_100`. Always use the real URI from `getBrowseSources`.
+- Multiple browse sources share the same `plugin_name` (`mpd` handles Favorites, Artists, Albums, Genres, Music Library, Last 100). Use URI for active-source highlighting, never `plugin_name`.
+- Events with `composed: true` cross shadow DOM. When a child re-dispatches the same event, the parent gets it twice. Always `e.stopPropagation()` in re-dispatchers.
+- HA panel caching is aggressive. Bumping `manifest.json` version forces invalidation. `deploy.sh` auto-bumps the patch.
+- `pushQueue` subscription receives data but doesn't always trigger Lit re-renders. Workaround: call `queue_get` after mutations. Needs investigation in T19.
+
+## Deploy Script
+- `./deploy.sh` at the project root: builds the frontend, auto-bumps the `manifest.json` patch version, then copies `frontend/volumio-panel.js` and `manifest.json` to `\\192.168.0.23\config\custom_components\volumio_ws\` (`services.py` / `services.yaml` only when newer than the HA copy). Reminds to restart HA at the end; never restarts automatically.
+
+## Next Tasks
+- **T19 — Queue panel, context menus, toast notifications.** Full queue UI with drag-drop reorder + remove. Context menus on all items. Fix `pushQueue` subscription re-render. Toast notifications.
+- **T20 — Playlists, Favorites, History views.**
+- **T21 — Multi-select.**
 
 ## Housekeeping
 - `/config/custom_components/volumio_ws.old` should be deleted from the HA config dir (harmless but messy).
@@ -90,3 +136,8 @@ Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-init
 | — | Browse | Pandora browse title cosmetic issue. |
 | — | Services | `queue_move`, `queue_clear`, `queue_play_index`, `playlist_create/delete/add_track/remove_track/play/enqueue` not yet live-tested. Same patterns as tested services — low risk. |
 | — | Services | Payload shapes for `removeFromQueue` (`{value: index}`), `moveQueue` (`{from: N, to: N}`), `addToPlaylist`/`removeFromPlaylist` (`service` field optional?), `addToFavourites`/`removeFromFavourites` item dict — working in tested cases but not exhaustively verified against all edge cases. |
+| — | Panel | Multi-device: panel picks the first Volumio media_player it finds and uses that `config_entry_id` for all service calls. With multiple Volumio instances configured, this can target the wrong device. Needs a device-selector dropdown. |
+| — | Panel | Queue panel uses `_refreshQueue()` workaround after mutations instead of `pushQueue` subscription. Subscription receives data but doesn't trigger re-renders. |
+| — | Panel | Alpha index uses `position: fixed` — may overlap queue panel on smaller screens. |
+| — | Panel | No hash routing / deep linking for browse navigation. Browser back/forward doesn't work. |
+| — | Panel | No toast/snackbar feedback for queue actions. |
