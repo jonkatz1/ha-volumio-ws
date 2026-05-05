@@ -32,6 +32,7 @@ SERVICE_QUEUE_REMOVE = "queue_remove"
 SERVICE_QUEUE_MOVE = "queue_move"
 SERVICE_QUEUE_CLEAR = "queue_clear"
 SERVICE_QUEUE_PLAY_INDEX = "queue_play_index"
+SERVICE_REPLACE_AND_PLAY = "replace_and_play"
 # Playlist
 SERVICE_PLAYLIST_LIST = "playlist_list"
 SERVICE_PLAYLIST_CREATE = "playlist_create"
@@ -40,6 +41,7 @@ SERVICE_PLAYLIST_ADD_TRACK = "playlist_add_track"
 SERVICE_PLAYLIST_REMOVE_TRACK = "playlist_remove_track"
 SERVICE_PLAYLIST_PLAY = "playlist_play"
 SERVICE_PLAYLIST_ENQUEUE = "playlist_enqueue"
+SERVICE_SAVE_QUEUE_TO_PLAYLIST = "save_queue_to_playlist"
 # Favorites
 SERVICE_FAVORITES_LIST = "favorites_list"
 SERVICE_FAVORITES_ADD = "favorites_add"
@@ -58,6 +60,7 @@ ATTR_INDEX = "index"
 ATTR_FROM_INDEX = "from_index"
 ATTR_TO_INDEX = "to_index"
 ATTR_NAME = "name"
+ATTR_TYPE = "type"
 
 # ── Schemas ──────────────────────────────────────────────────────────
 # Server-side validation; services.yaml handles the UI side.
@@ -130,6 +133,19 @@ SERVICE_QUEUE_PLAY_INDEX_SCHEMA = vol.Schema(
     }
 )
 
+SERVICE_REPLACE_AND_PLAY_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
+        vol.Required(ATTR_URI): cv.string,
+        vol.Optional(ATTR_TITLE): cv.string,
+        vol.Optional(ATTR_SERVICE): cv.string,
+        vol.Optional(ATTR_ALBUM): cv.string,
+        vol.Optional(ATTR_ARTIST): cv.string,
+        vol.Optional(ATTR_ALBUMART): cv.string,
+        vol.Optional(ATTR_TYPE): cv.string,
+    }
+)
+
 # -- Playlist --
 SERVICE_PLAYLIST_LIST_SCHEMA = vol.Schema(
     {
@@ -177,6 +193,13 @@ SERVICE_PLAYLIST_PLAY_SCHEMA = vol.Schema(
 )
 
 SERVICE_PLAYLIST_ENQUEUE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
+        vol.Required(ATTR_NAME): cv.string,
+    }
+)
+
+SERVICE_SAVE_QUEUE_TO_PLAYLIST_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
         vol.Required(ATTR_NAME): cv.string,
@@ -371,6 +394,28 @@ async def _async_handle_queue_play_index(
     return None
 
 
+async def _async_handle_replace_and_play(
+    hass: HomeAssistant, call: ServiceCall
+) -> ServiceResponse:
+    """Handle the replace_and_play service call.
+
+    Atomically clears queue, adds item(s), and starts playback using
+    Volumio's native replaceAndPlay WS event.
+    """
+    coordinator = _get_coordinator(hass, call)
+
+    item: dict = {"uri": call.data[ATTR_URI]}
+    for field in (ATTR_TITLE, ATTR_SERVICE, ATTR_ALBUM, ATTR_ARTIST, ATTR_ALBUMART, ATTR_TYPE):
+        if field in call.data:
+            item[field] = call.data[field]
+
+    result = await coordinator.async_replace_and_play(item)
+
+    if call.return_response:
+        return result
+    return None
+
+
 # -- Playlist --
 
 async def _async_handle_playlist_list(
@@ -471,6 +516,23 @@ async def _async_handle_playlist_enqueue(
     return None
 
 
+async def _async_handle_save_queue_to_playlist(
+    hass: HomeAssistant, call: ServiceCall
+) -> ServiceResponse:
+    """Handle the save_queue_to_playlist service call.
+
+    Uses Volumio's native saveQueueToPlaylist command which reads the
+    current queue server-side and saves it atomically as a playlist.
+    """
+    coordinator = _get_coordinator(hass, call)
+    name: str = call.data[ATTR_NAME]
+    result = await coordinator.async_save_queue_to_playlist(name)
+
+    if call.return_response:
+        return result
+    return None
+
+
 # -- Favorites --
 
 async def _async_handle_favorites_list(
@@ -564,6 +626,9 @@ def register_services(hass: HomeAssistant) -> None:
     async def handle_queue_play_index(call: ServiceCall) -> ServiceResponse:
         return await _async_handle_queue_play_index(hass, call)
 
+    async def handle_replace_and_play(call: ServiceCall) -> ServiceResponse:
+        return await _async_handle_replace_and_play(hass, call)
+
     async def handle_playlist_list(call: ServiceCall) -> ServiceResponse:
         return await _async_handle_playlist_list(hass, call)
 
@@ -584,6 +649,9 @@ def register_services(hass: HomeAssistant) -> None:
 
     async def handle_playlist_enqueue(call: ServiceCall) -> ServiceResponse:
         return await _async_handle_playlist_enqueue(hass, call)
+
+    async def handle_save_queue_to_playlist(call: ServiceCall) -> ServiceResponse:
+        return await _async_handle_save_queue_to_playlist(hass, call)
 
     async def handle_favorites_list(call: ServiceCall) -> ServiceResponse:
         return await _async_handle_favorites_list(hass, call)
@@ -666,6 +734,13 @@ def register_services(hass: HomeAssistant) -> None:
         schema=SERVICE_QUEUE_PLAY_INDEX_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REPLACE_AND_PLAY,
+        handle_replace_and_play,
+        schema=SERVICE_REPLACE_AND_PLAY_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
 
     # Playlist
     hass.services.async_register(
@@ -715,6 +790,13 @@ def register_services(hass: HomeAssistant) -> None:
         SERVICE_PLAYLIST_ENQUEUE,
         handle_playlist_enqueue,
         schema=SERVICE_PLAYLIST_ENQUEUE_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SAVE_QUEUE_TO_PLAYLIST,
+        handle_save_queue_to_playlist,
+        schema=SERVICE_SAVE_QUEUE_TO_PLAYLIST_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
 

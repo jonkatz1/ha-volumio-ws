@@ -354,6 +354,9 @@ class VolumioAlbumDetail extends LitElement {
             <button class="action-btn secondary" @click=${this._addToQueue}>
               <ha-icon icon="mdi:playlist-plus"></ha-icon> Add to Queue
             </button>
+            <button class="action-btn secondary" @click=${this._onMoreClick}>
+              <ha-icon icon="mdi:dots-horizontal"></ha-icon>
+            </button>
           </div>
         </div>
       </div>
@@ -384,7 +387,6 @@ class VolumioAlbumDetail extends LitElement {
                 type="${track.type || "song"}"
                 ?is-playing=${this.currentUri && track.uri === this.currentUri}
                 @volumio-track-click=${this._onTrackClick}
-                @volumio-track-add-queue=${this._onTrackAddQueue}
               ></volumio-track-card>
             `;
           })}
@@ -444,10 +446,21 @@ class VolumioAlbumDetail extends LitElement {
     }));
   }
 
-  _onTrackAddQueue(e) {
+  _onMoreClick(e) {
     e.stopPropagation();
-    this.dispatchEvent(new CustomEvent("volumio-track-add-queue", {
-      detail: e.detail,
+    const rect = e.currentTarget.getBoundingClientRect();
+    this.dispatchEvent(new CustomEvent("volumio-context-menu", {
+      detail: {
+        uri: this.albumUri,
+        title: this.albumTitle,
+        artist: this.albumArtist,
+        albumart: this.albumArt,
+        service: this.albumService,
+        type: "album",
+        x: rect.right,
+        y: rect.bottom,
+        context: "album",
+      },
       bubbles: true, composed: true,
     }));
   }

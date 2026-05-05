@@ -217,6 +217,13 @@ class VolumioBrowseList extends LitElement {
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       }
 
+      /* When queue panel is pinned (>= 1400px), offset alpha index */
+      @media (min-width: 1400px) {
+        .alpha-index {
+          right: 340px;
+        }
+      }
+
       .alpha-letter {
         width: 22px;
         height: 18px;
@@ -397,7 +404,6 @@ class VolumioBrowseList extends LitElement {
               ?compact=${compact}
               ?is-playing=${this.currentUri && item.uri === this.currentUri}
               @volumio-track-click=${this._onItemClick}
-              @volumio-track-add-queue=${this._onItemAddQueue}
             ></volumio-track-card>
           `;
         })}
@@ -439,15 +445,6 @@ class VolumioBrowseList extends LitElement {
     e.stopPropagation();
     const detail = e.detail;
     this.dispatchEvent(new CustomEvent("volumio-item-play", {
-      detail,
-      bubbles: true, composed: true,
-    }));
-  }
-
-  _onItemAddQueue(e) {
-    e.stopPropagation();
-    const detail = e.detail;
-    this.dispatchEvent(new CustomEvent("volumio-item-add-queue", {
       detail,
       bubbles: true, composed: true,
     }));

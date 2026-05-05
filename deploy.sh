@@ -47,7 +47,16 @@ copy_if_newer() {
 echo "==> Deploying to $DST"
 copy_always "frontend/volumio-panel.js"
 copy_always "manifest.json"
-copy_if_newer "services.py"
+
+# All Python files under the integration root, newer-only
+shopt -s nullglob
+for src_py in "$SRC"/*.py; do
+  name="$(basename "$src_py")"
+  copy_if_newer "$name"
+done
+shopt -u nullglob
+
+# YAML companions
 copy_if_newer "services.yaml"
 
 # 4. Summary

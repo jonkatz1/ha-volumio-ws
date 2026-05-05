@@ -215,6 +215,67 @@ queue_play_index:
           min: 0
           mode: box
 
+replace_and_play:
+  name: Replace and Play
+  description: >-
+    Atomically clear the queue, add the specified item, and start playback.
+    Uses Volumio's native replaceAndPlay command, avoiding race conditions
+    from separate clear/add/play calls. Works with single tracks and album URIs.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    uri:
+      name: URI
+      description: Track or album URI to play.
+      required: true
+      example: "music-library/NAS/Artist/Album"
+      selector:
+        text:
+    title:
+      name: Title
+      description: Track or album title (optional metadata).
+      required: false
+      example: "My Song"
+      selector:
+        text:
+    service:
+      name: Service
+      description: Music service plugin name (e.g. mpd, qobuz, tidal).
+      required: false
+      example: "mpd"
+      selector:
+        text:
+    album:
+      name: Album
+      description: Album name (optional metadata).
+      required: false
+      selector:
+        text:
+    artist:
+      name: Artist
+      description: Artist name (optional metadata).
+      required: false
+      selector:
+        text:
+    albumart:
+      name: Album Art
+      description: Album art URL (optional metadata).
+      required: false
+      selector:
+        text:
+    type:
+      name: Type
+      description: Item type (e.g. song, album, folder).
+      required: false
+      example: "song"
+      selector:
+        text:
+
 # ── Playlist services ────────────────────────────────────────────────
 
 playlist_list:
@@ -377,6 +438,28 @@ playlist_enqueue:
       description: Name of the playlist to enqueue.
       required: true
       example: "My Playlist"
+      selector:
+        text:
+
+save_queue_to_playlist:
+  name: Save Queue to Playlist
+  description: >-
+    Save the current play queue as a named playlist. Uses Volumio's native
+    saveQueueToPlaylist command which reads the queue server-side and writes
+    all tracks atomically — no per-track add calls needed.
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    name:
+      name: Playlist Name
+      description: Name for the new playlist.
+      required: true
+      example: "My Queue Snapshot"
       selector:
         text:
 

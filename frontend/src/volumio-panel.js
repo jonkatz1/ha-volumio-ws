@@ -13,6 +13,7 @@ import { LitElement, html, css } from "lit";
 import { sharedStyles } from "./styles/shared-styles.js";
 import { detectQuality } from "./utils/quality-utils.js";
 import { resolveArt } from "./utils/format-utils.js";
+import { HAAdapter } from "./adapters/ha-adapter.js";
 import "./components/top-bar.js";
 import "./components/left-nav.js";
 import "./components/player-bar.js";
@@ -23,8 +24,8 @@ import "./components/album-detail.js";
 import "./components/artist-detail.js";
 import "./components/search-results.js";
 import "./components/breadcrumb-bar.js";
-
-console.info("[volumio-panel] Build T18-fix10 loaded at", new Date().toISOString());
+import "./components/context-menu.js";
+import "./components/toast-notification.js";
 
 // Map Volumio service names to display labels
 const SERVICE_DISPLAY = {
@@ -45,9 +46,6 @@ function serviceLabel(service) {
   return SERVICE_DISPLAY[service] || service.charAt(0).toUpperCase() + service.slice(1);
 }
 
-// HA supported_features bitmask values
-const SUPPORT_VOLUME_SET = 4;
-
 class VolumioPanel extends LitElement {
   static get properties() {
     return {
@@ -56,15 +54,11 @@ class VolumioPanel extends LitElement {
       route: { type: Object },
       panel: { type: Object },
       // Internal state
-      _entityId: { type: String, state: true },
-      _configEntryId: { type: String, state: true },
       _queue: { type: Array, state: true },
-      _queueUnsub: { state: true },
       _activeView: { type: String, state: true },
       _navMode: { type: String, state: true },
       _showQueue: { type: Boolean, state: true },
       _showNavFlyout: { type: Boolean, state: true },
-      _sensorBase: { type: String, state: true },
       _isFavorite: { type: Boolean, state: true },
       // Browse state
       _browseStack: { type: Array, state: true },
@@ -79,6 +73,24 @@ class VolumioPanel extends LitElement {
       // Real browse sources from Volumio
       _browseSources: { type: Array, state: true },
       _activeSourceUri: { type: String, state: true },
+      // Context menu state
+      _ctxOpen: { type: Boolean, state: true },
+      _ctxX: { type: Number, state: true },
+      _ctxY: { type: Number, state: true },
+      _ctxItems: { type: Array, state: true },
+      _ctxTarget: { type: Object, state: true },
+      _ctxPlaylists: { type: Array, state: true },
+      // Toast state
+      _toastMessage: { type: String, state: true },
+      _toastOpen: { type: Boolean, state: true },
+      _toastUndo: { type: String, state: true },
+      _toastUndoData: { type: Object, state: true },
+      // Queue panel state
+      _queueConfirmClear: { type: Boolean, state: true },
+      _queueSaveOpen: { type: Boolean, state: true },
+      _queueSaveName: { type: String, state: true },
+      _dragIndex: { type: Number, state: true },
+      _dragOverIndex: { type: Number, state: true },
     };
   }
 
@@ -316,6 +328,178 @@ class VolumioPanel extends LitElement {
           flex-shrink: 0;
         }
 
+        /* ── Queue drag handle ───────────────────── */
+        .qi-drag {
+          width: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: grab;
+          color: var(--secondary-text-color);
+          opacity: 0;
+          transition: opacity 0.1s;
+          flex-shrink: 0;
+          touch-action: none;
+        }
+        .qi-drag:active { cursor: grabbing; }
+        .queue-item:hover .qi-drag { opacity: 0.6; }
+        .qi-drag ha-icon { --mdc-icon-size: 14px; }
+
+        .queue-item.dragging {
+          opacity: 0.4;
+          background: var(--divider-color, rgba(255, 255, 255, 0.04));
+        }
+
+        .queue-item.drag-over-above {
+          border-top: 2px solid var(--primary-color, #03a9f4);
+        }
+        .queue-item.drag-over-below {
+          border-bottom: 2px solid var(--primary-color, #03a9f4);
+        }
+
+        /* ── Queue remove button ─────────────────── */
+        .qi-remove {
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          border: none;
+          background: transparent;
+          color: var(--secondary-text-color);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0;
+          opacity: 0;
+          transition: opacity 0.1s, background 0.1s;
+          flex-shrink: 0;
+        }
+        .queue-item:hover .qi-remove { opacity: 1; }
+        .qi-remove:hover {
+          background: var(--divider-color, rgba(255, 255, 255, 0.08));
+          color: var(--error-color, #f44336);
+        }
+        .qi-remove ha-icon { --mdc-icon-size: 14px; }
+
+        /* ── Queue header actions ─────────────────── */
+        .queue-actions {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        /* ── Confirmation bar ─────────────────────── */
+        .confirm-bar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 8px 16px;
+          background: var(--card-background-color, #2a2a2a);
+          border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.08));
+          font-size: 13px;
+          color: var(--primary-text-color);
+        }
+        .confirm-bar .confirm-btns {
+          display: flex;
+          gap: 8px;
+        }
+        .confirm-bar button {
+          padding: 4px 12px;
+          border-radius: 4px;
+          border: none;
+          font-size: 12px;
+          cursor: pointer;
+        }
+        .confirm-bar .btn-yes {
+          background: var(--error-color, #f44336);
+          color: #fff;
+        }
+        .confirm-bar .btn-no {
+          background: var(--divider-color, rgba(255, 255, 255, 0.12));
+          color: var(--primary-text-color);
+        }
+
+        /* ── Save as playlist dialog ──────────────── */
+        .save-dialog {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.08));
+        }
+        .save-dialog input {
+          flex: 1;
+          padding: 6px 10px;
+          border-radius: 4px;
+          border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+          background: transparent;
+          color: var(--primary-text-color);
+          font-size: 13px;
+          outline: none;
+        }
+        .save-dialog input:focus {
+          border-color: var(--primary-color, #03a9f4);
+        }
+        .save-dialog button {
+          padding: 6px 12px;
+          border-radius: 4px;
+          border: none;
+          font-size: 12px;
+          cursor: pointer;
+          background: var(--primary-color, #03a9f4);
+          color: #fff;
+        }
+
+        /* ── Queue empty state ────────────────────── */
+        .queue-empty-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 48px 16px;
+          text-align: center;
+          gap: 12px;
+          color: var(--secondary-text-color);
+          font-size: 13px;
+        }
+        .queue-empty-state ha-icon {
+          --mdc-icon-size: 32px;
+          opacity: 0.3;
+        }
+        .queue-empty-state .browse-btn {
+          padding: 6px 16px;
+          border-radius: 16px;
+          border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+          background: transparent;
+          color: var(--primary-text-color);
+          font-size: 12px;
+          cursor: pointer;
+          margin-top: 4px;
+        }
+        .queue-empty-state .browse-btn:hover {
+          background: var(--divider-color, rgba(255, 255, 255, 0.08));
+        }
+
+        /* ── Equalizer animation ──────────────────── */
+        @keyframes eq-bar1 { 0%,100%{height:3px} 50%{height:12px} }
+        @keyframes eq-bar2 { 0%,100%{height:8px} 50%{height:4px} }
+        @keyframes eq-bar3 { 0%,100%{height:5px} 50%{height:11px} }
+        .eq-bars {
+          display: flex;
+          align-items: flex-end;
+          gap: 2px;
+          height: 14px;
+          flex-shrink: 0;
+        }
+        .eq-bars span {
+          width: 3px;
+          background: var(--primary-color, #03a9f4);
+          border-radius: 1px;
+        }
+        .eq-bars span:nth-child(1) { animation: eq-bar1 0.8s ease-in-out infinite; }
+        .eq-bars span:nth-child(2) { animation: eq-bar2 0.6s ease-in-out infinite 0.1s; }
+        .eq-bars span:nth-child(3) { animation: eq-bar3 0.7s ease-in-out infinite 0.2s; }
+
         /* ── Placeholder views ───────────────────── */
         .placeholder-view {
           display: flex;
@@ -350,15 +534,13 @@ class VolumioPanel extends LitElement {
 
   constructor() {
     super();
-    this._entityId = null;
-    this._configEntryId = null;
+    this._adapter = new HAAdapter();
+    this._adapterConnected = false;
     this._queue = [];
-    this._queueUnsub = null;
     this._activeView = "now-playing";
     this._navMode = "collapsed";
     this._showQueue = false;
     this._showNavFlyout = false;
-    this._sensorBase = null;
     this._isFavorite = false;
     this._favoritesCache = [];
     this._lastUri = null;
@@ -375,6 +557,24 @@ class VolumioPanel extends LitElement {
     this._searchTrail = []; // [{title, uri}] — navigation chain from search
     this._browseSources = [];
     this._activeSourceUri = "";
+    // Context menu state
+    this._ctxOpen = false;
+    this._ctxX = 0;
+    this._ctxY = 0;
+    this._ctxItems = [];
+    this._ctxTarget = null;
+    this._ctxPlaylists = [];
+    // Toast state
+    this._toastMessage = "";
+    this._toastOpen = false;
+    this._toastUndo = null;
+    this._toastUndoData = null;
+    // Queue panel state
+    this._queueConfirmClear = false;
+    this._queueSaveOpen = false;
+    this._queueSaveName = "";
+    this._dragIndex = -1;
+    this._dragOverIndex = -1;
   }
 
   connectedCallback() {
@@ -382,11 +582,15 @@ class VolumioPanel extends LitElement {
     this._applyBreakpoint();
     window.addEventListener("resize", this._onResize);
     window.addEventListener("keydown", this._keyHandler);
+    // Queue subscription via adapter
+    this._adapter.onQueueChange((queue) => {
+      this._queue = queue;
+    });
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    this._unsubscribeQueue();
+    this._adapter.disconnect();
     window.removeEventListener("resize", this._onResize);
     window.removeEventListener("keydown", this._keyHandler);
   }
@@ -408,24 +612,41 @@ class VolumioPanel extends LitElement {
     }
   }
 
-  updated(changedProps) {
-    if (changedProps.has("_activeView")) {
-      console.debug("[volumio-panel] View changed:", this._activeView, "searchTrail:", this._searchTrail, "searchQuery:", this._searchQuery);
-    }
-    if (changedProps.has("hass") && this.hass) {
-      this._resolveIds();
-      if (!this._queueUnsub) {
-        this._subscribeQueue();
+  willUpdate(changedProps) {
+    // Fire on either hass OR panel changes — Lit does not guarantee the
+    // assignment order of reactive properties, so panel may arrive after
+    // hass. Adapter must see late panel arrivals to resolve configEntryId.
+    if (
+      this.hass &&
+      (changedProps.has("hass") || changedProps.has("panel"))
+    ) {
+      if (!this._adapterConnected) {
+        this._adapter.connect({ hass: this.hass, panel: this.panel });
+        this._adapterConnected = true;
+      } else {
+        this._adapter.updateHass(this.hass, this.panel);
       }
-      // Fetch real browse sources once we have a config entry
-      if (this._configEntryId && this._browseSources.length === 0) {
+    }
+  }
+
+  updated(changedProps) {
+    // Side effects need to run on either hass OR panel changes since
+    // either one may flip _adapter.ready to true.
+    if (
+      this.hass &&
+      (changedProps.has("hass") || changedProps.has("panel"))
+    ) {
+      // Fetch real browse sources once adapter is ready
+      if (this._adapter.ready && this._browseSources.length === 0) {
         this._fetchBrowseSources();
       }
-      const entity = this._getEntity();
-      const uri = entity?.attributes?.uri ?? null;
+
+      // Track URI changes for favorite detection
+      const state = this._adapter.getState();
+      const uri = state.uri || null;
       if (uri !== this._lastUri) {
         this._lastUri = uri;
-        if (uri && this._configEntryId) {
+        if (uri && this._adapter.ready) {
           this._checkFavorite();
         } else {
           this._isFavorite = false;
@@ -434,177 +655,40 @@ class VolumioPanel extends LitElement {
     }
   }
 
-  // ── ID Resolution ─────────────────────────────────────────
+  // ── Adapter Delegates ──────────────────────────────────────
 
-  _resolveIds() {
-    if (this._entityId && this._configEntryId) return;
-
-    if (!this._entityId) {
-      let found = Object.keys(this.hass.states).find(
-        (eid) =>
-          eid.startsWith("media_player.") &&
-          this.hass.states[eid].attributes?.volumio_ws === true
-      );
-      if (!found) {
-        found = Object.keys(this.hass.states).find(
-          (eid) =>
-            eid.startsWith("media_player.") && eid.includes("volumio")
-        );
-      }
-      if (found) {
-        this._entityId = found;
-        this._sensorBase = found.replace("media_player.", "");
-      }
-    }
-
-    if (!this._configEntryId && this.panel?.config?.config_entry_id) {
-      this._configEntryId = this.panel.config.config_entry_id;
-    }
-  }
-
-  // ── Queue Subscription ────────────────────────────────────
-
-  async _subscribeQueue() {
-    if (this._queueUnsub || !this.hass) return;
-    try {
-      this._queueUnsub = await this.hass.connection.subscribeMessage(
-        (msg) => {
-          if (msg.queue) {
-            console.debug("[volumio-panel] Queue push received:", msg.queue.length, "items");
-            this._queue = msg.queue;
-          }
-        },
-        { type: "volumio_ws/subscribe_queue" }
-      );
-      console.debug("[volumio-panel] Queue subscription active");
-    } catch (err) {
-      console.warn("[volumio-panel] Queue subscription failed:", err);
-    }
-
-    // Also fetch queue via service call — the subscription's initial push
-    // may have an empty coordinator queue if pushQueue hasn't arrived yet
-    if (this._configEntryId) {
-      try {
-        const result = await this.hass.connection.sendMessagePromise({
-          type: "call_service",
-          domain: "volumio_ws",
-          service: "queue_get",
-          service_data: { config_entry_id: this._configEntryId },
-          return_response: true,
-        });
-        if (result?.response?.queue) {
-          console.debug("[volumio-panel] Queue fetched via service:", result.response.queue.length, "items");
-          this._queue = result.response.queue;
-        }
-      } catch (err) {
-        console.debug("[volumio-panel] queue_get fallback failed (non-fatal):", err.message);
-      }
-    }
-  }
-
-  _unsubscribeQueue() {
-    if (this._queueUnsub) {
-      if (typeof this._queueUnsub === "function") {
-        this._queueUnsub();
-      }
-      this._queueUnsub = null;
-    }
-  }
-
-  // ── Service Calls ─────────────────────────────────────────
-
+  /** Call a volumio_ws service via adapter. */
   async _callService(service, data = {}) {
-    return await this.hass.connection.sendMessagePromise({
-      type: "call_service",
-      domain: "volumio_ws",
-      service,
-      service_data: {
-        config_entry_id: this._configEntryId,
-        ...data,
-      },
-      return_response: true,
-    });
-  }
-
-  async _callMediaPlayerService(service, data = {}) {
-    return await this.hass.callService("media_player", service, {
-      entity_id: this._entityId,
-      ...data,
-    });
-  }
-
-  // ── State Getters ─────────────────────────────────────────
-
-  _getEntity() {
-    return this._entityId ? this.hass?.states[this._entityId] : null;
-  }
-
-  _getSensorValue(key) {
-    const SENSOR_MAP = {
-      trackType: "track_type",
-      samplerate: "sample_rate",
-      bitdepth: "bit_depth",
-      channels: "channels",
-    };
-    const suffix = SENSOR_MAP[key];
-    if (!suffix || !this._sensorBase) return null;
-    const sensorId = `sensor.${this._sensorBase}_${suffix}`;
-    const sensor = this.hass?.states[sensorId];
-    return sensor?.state !== "unknown" && sensor?.state !== "unavailable"
-      ? sensor?.state
-      : null;
+    return await this._adapter.call(service, data);
   }
 
   _getQualityInfo() {
-    const entity = this._getEntity();
-    if (!entity) return null;
-    const attrs = entity.attributes || {};
+    const state = this._adapter.getState();
+    if (state.state === "unavailable") return null;
 
     const inputs = {
-      trackType: this._getSensorValue("trackType"),
-      samplerate: this._getSensorValue("samplerate"),
-      bitdepth: this._getSensorValue("bitdepth"),
-      bitrate: attrs.bitrate || null,
-      isStream: attrs.media_content_type === "channel",
+      trackType: state.trackType,
+      samplerate: state.samplerate,
+      bitdepth: state.bitdepth,
+      bitrate: state.bitrate,
+      isStream: state._raw?.media_content_type === "channel",
     };
 
-    // Log quality inputs once per track change
-    const inputKey = JSON.stringify(inputs);
-    if (this._lastQualityInputKey !== inputKey) {
-      console.debug("[volumio-panel] Quality inputs:", inputs);
-      this._lastQualityInputKey = inputKey;
-    }
-
     return detectQuality(inputs);
-  }
-
-  _isVolumeEnabled() {
-    const entity = this._getEntity();
-    if (!entity) return false;
-    const features = entity.attributes?.supported_features || 0;
-    const enabled = (features & SUPPORT_VOLUME_SET) !== 0;
-    // Debug: log when volume state seems wrong
-    if (this._lastVolumeEnabled !== enabled) {
-      console.debug("[volumio-panel] Volume enabled:", enabled, "supported_features:", features, "& 4 =", features & 4);
-      this._lastVolumeEnabled = enabled;
-    }
-    return enabled;
   }
 
   // ── Render ────────────────────────────────────────────────
 
   render() {
-    const entity = this._getEntity();
-    const attrs = entity?.attributes || {};
-    const state = entity?.state || "unavailable";
+    const s = this._adapter.getState();
     const qualityInfo = this._getQualityInfo();
-    const artUrl = resolveArt(attrs.entity_picture, "");
-    const volumioUrl = this.panel?.config?.volumio_url || "";
+    const artUrl = resolveArt(s.albumArt, "");
+    const volumioUrl = this._adapter.getVolumioUrl();
 
     const navSources = this._getNavSources();
 
     return html`
-      <div class="shell">
+      <div class="shell" @volumio-context-menu=${this._onContextMenuRequest}>
         <volumio-top-bar
           active-view="${this._activeView}"
           .breadcrumb=${[]}
@@ -635,30 +719,30 @@ class VolumioPanel extends LitElement {
               ></volumio-breadcrumb-bar>
             ` : ""}
             ${this._activeView === "album-detail" || this._activeView === "artist-detail"
-              ? this._renderCenterContent(entity, attrs, state, qualityInfo, artUrl)
+              ? this._renderCenterContent(s, qualityInfo, artUrl)
               : this._searchQuery
-                ? this._renderSearchView(attrs, volumioUrl)
-                : this._renderCenterContent(entity, attrs, state, qualityInfo, artUrl)}
+                ? this._renderSearchView(s, volumioUrl)
+                : this._renderCenterContent(s, qualityInfo, artUrl)}
           </div>
 
           ${this._renderRightZone()}
         </div>
 
         <volumio-player-bar
-          player-state="${state}"
-          title="${attrs.media_title || ""}"
-          artist="${attrs.media_artist || ""}"
+          player-state="${s.state}"
+          title="${s.title}"
+          artist="${s.artist}"
           album-art="${artUrl}"
-          .duration=${attrs.media_duration || 0}
-          .position=${attrs.media_position || 0}
-          position-updated-at="${attrs.media_position_updated_at || ""}"
-          .volume=${attrs.volume_level != null ? Math.round(attrs.volume_level * 100) : 0}
-          ?muted=${attrs.is_volume_muted || false}
-          ?shuffle=${attrs.shuffle || false}
-          repeat="${attrs.repeat || "off"}"
+          .duration=${s.duration}
+          .position=${s.position}
+          position-updated-at="${s.positionUpdatedAt}"
+          .volume=${s.volume}
+          ?muted=${s.muted}
+          ?shuffle=${s.shuffle}
+          repeat="${s.repeat}"
           .quality=${qualityInfo}
-          source="${attrs.source || ""}"
-          .volumeEnabled=${this._isVolumeEnabled()}
+          source="${s.source}"
+          .volumeEnabled=${s.volumeEnabled}
           .isFavorite=${this._isFavorite}
           @volumio-command=${this._onCommand}
           @volumio-navigate=${this._onNavigate}
@@ -679,6 +763,24 @@ class VolumioPanel extends LitElement {
           ></volumio-left-nav>
         </div>
       ` : ""}
+
+      <volumio-context-menu
+        ?open=${this._ctxOpen}
+        .x=${this._ctxX}
+        .y=${this._ctxY}
+        .items=${this._ctxItems}
+        .submenuItems=${this._ctxPlaylists}
+        @volumio-context-action=${this._onContextAction}
+        @volumio-context-close=${() => { this._ctxOpen = false; }}
+      ></volumio-context-menu>
+
+      <volumio-toast-notification
+        ?open=${this._toastOpen}
+        message="${this._toastMessage}"
+        undo-action="${this._toastUndo || ""}"
+        @volumio-toast-undo=${this._onToastUndo}
+        @volumio-toast-dismiss=${() => { this._toastOpen = false; }}
+      ></volumio-toast-notification>
     `;
   }
 
@@ -702,10 +804,9 @@ class VolumioPanel extends LitElement {
   _renderRightZone() {
     if (!this._showQueue) return html``;
 
-    const entity = this._getEntity();
-    const attrs = entity?.attributes || {};
-    const currentPosition = attrs.queue_position ?? -1;
-    const volumioUrl = this.panel?.config?.volumio_url || "";
+    const s = this._adapter.getState();
+    const currentPosition = s.queuePosition;
+    const volumioUrl = this._adapter.getVolumioUrl();
 
     return html`
       <div class="right-zone pinned">
@@ -713,18 +814,56 @@ class VolumioPanel extends LitElement {
           <div class="queue-header">
             <span class="queue-title">Queue</span>
             <span class="queue-count">${this._queue.length} track${this._queue.length !== 1 ? "s" : ""}</span>
-            <button class="queue-clear-btn" @click=${this._onQueueClear} title="Clear queue">
-              <ha-icon icon="mdi:delete-outline"></ha-icon>
-            </button>
+            <div class="queue-actions">
+              <button class="queue-clear-btn" @click=${this._onQueueSaveStart} title="Save as playlist">
+                <ha-icon icon="mdi:content-save-outline"></ha-icon>
+              </button>
+              <button class="queue-clear-btn" @click=${this._onQueueClearClick} title="Clear queue">
+                <ha-icon icon="mdi:delete-outline"></ha-icon>
+              </button>
+            </div>
           </div>
+          ${this._queueConfirmClear ? html`
+            <div class="confirm-bar">
+              <span>Clear queue?</span>
+              <div class="confirm-btns">
+                <button class="btn-yes" @click=${this._onQueueClear}>Yes</button>
+                <button class="btn-no" @click=${() => { this._queueConfirmClear = false; }}>No</button>
+              </div>
+            </div>
+          ` : ""}
+          ${this._queueSaveOpen ? html`
+            <div class="save-dialog">
+              <input
+                type="text"
+                placeholder="Playlist name"
+                .value=${this._queueSaveName}
+                @input=${(e) => { this._queueSaveName = e.target.value; }}
+                @keydown=${(e) => { if (e.key === "Enter") this._onQueueSaveConfirm(); if (e.key === "Escape") this._queueSaveOpen = false; }}
+              />
+              <button @click=${this._onQueueSaveConfirm}>Save</button>
+            </div>
+          ` : ""}
           <div class="queue-list">
             ${this._queue.length === 0
-              ? html`<div class="queue-empty">Queue is empty</div>`
+              ? html`
+                <div class="queue-empty-state">
+                  <ha-icon icon="mdi:playlist-music-outline"></ha-icon>
+                  <div>Queue is empty</div>
+                  <div>Browse for music to start playing.</div>
+                  <button class="browse-btn" @click=${() => this._onNavigate({ detail: { view: "browse" } })}>Browse</button>
+                </div>`
               : this._queue.map((item, i) => html`
                 <div
-                  class="queue-item ${i === currentPosition ? "playing" : ""}"
+                  class="queue-item ${i === currentPosition ? "playing" : ""} ${i === this._dragIndex ? "dragging" : ""} ${i === this._dragOverIndex ? (this._dragIndex < i ? "drag-over-below" : "drag-over-above") : ""}"
                   @click=${() => this._onQueueItemClick(i)}
+                  @contextmenu=${(e) => this._onQueueContextMenu(e, item, i)}
                 >
+                  <div class="qi-drag"
+                    @pointerdown=${(e) => this._onDragStart(e, i)}
+                  >
+                    <ha-icon icon="mdi:drag-horizontal-variant"></ha-icon>
+                  </div>
                   <div class="qi-art">
                     ${item.albumart
                       ? html`<img src="${resolveArt(item.albumart, volumioUrl)}" alt="" loading="lazy" />`
@@ -734,7 +873,12 @@ class VolumioPanel extends LitElement {
                     <div class="qi-title">${item.name || item.title || "—"}</div>
                     <div class="qi-artist">${item.artist || ""}</div>
                   </div>
-                  ${i === currentPosition ? html`<ha-icon class="qi-eq" icon="mdi:equalizer"></ha-icon>` : ""}
+                  ${i === currentPosition
+                    ? html`<div class="eq-bars"><span></span><span></span><span></span></div>`
+                    : ""}
+                  <button class="qi-remove" @click=${(e) => this._onQueueRemove(e, i)} title="Remove">
+                    <ha-icon icon="mdi:close"></ha-icon>
+                  </button>
                 </div>
               `)}
           </div>
@@ -743,20 +887,20 @@ class VolumioPanel extends LitElement {
     `;
   }
 
-  _renderCenterContent(entity, attrs, state, qualityInfo, artUrl) {
-    const volumioUrl = this.panel?.config?.volumio_url || "";
+  _renderCenterContent(s, qualityInfo, artUrl) {
+    const volumioUrl = this._adapter.getVolumioUrl();
 
     switch (this._activeView) {
       case "now-playing":
         return html`
           <volumio-now-playing
-            player-state="${state}"
-            title="${attrs.media_title || ""}"
-            artist="${attrs.media_artist || ""}"
-            album="${attrs.media_album_name || ""}"
+            player-state="${s.state}"
+            title="${s.title}"
+            artist="${s.artist}"
+            album="${s.album}"
             album-art="${artUrl}"
             .quality=${qualityInfo}
-            source="${attrs.source || ""}"
+            source="${s.source}"
             .isFavorite=${this._isFavorite}
             @volumio-command=${this._onCommand}
             @volumio-navigate=${this._onNavigate}
@@ -764,9 +908,9 @@ class VolumioPanel extends LitElement {
           ></volumio-now-playing>
         `;
       case "browse":
-        return this._renderBrowseView(attrs, volumioUrl);
+        return this._renderBrowseView(s, volumioUrl);
       case "album-detail":
-        return this._renderAlbumDetail(attrs, volumioUrl);
+        return this._renderAlbumDetail(s, volumioUrl);
       case "artist-detail":
         return this._renderArtistDetail(volumioUrl);
       case "playlists":
@@ -782,7 +926,7 @@ class VolumioPanel extends LitElement {
     }
   }
 
-  _renderBrowseView(attrs, volumioUrl) {
+  _renderBrowseView(s, volumioUrl) {
     // If no browse stack, show source grid
     if (this._browseStack.length === 0) {
       return html`
@@ -799,17 +943,15 @@ class VolumioPanel extends LitElement {
       <volumio-browse-list
         .items=${this._browseItems}
         ?loading=${this._browseLoading}
-        current-uri="${attrs.uri || ""}"
+        current-uri="${s.uri}"
         volumio-url="${volumioUrl}"
         @volumio-item-click=${this._onBrowseItemClick}
         @volumio-item-play=${this._onBrowseItemPlay}
-        @volumio-item-add-queue=${this._onAddItemToQueue}
-        @volumio-card-add-queue=${this._onAddItemToQueue}
       ></volumio-browse-list>
     `;
   }
 
-  _renderAlbumDetail(attrs, volumioUrl) {
+  _renderAlbumDetail(s, volumioUrl) {
     const ctx = this._browseContext || {};
     return html`
       <volumio-album-detail
@@ -820,10 +962,9 @@ class VolumioPanel extends LitElement {
         album-service="${ctx.service || ""}"
         .tracks=${this._browseItems}
         ?loading=${this._browseLoading}
-        current-uri="${attrs.uri || ""}"
+        current-uri="${s.uri}"
         volumio-url="${volumioUrl}"
         @volumio-track-click=${this._onTrackPlay}
-        @volumio-track-add-queue=${this._onAddItemToQueue}
         @volumio-album-play=${this._onAlbumPlay}
         @volumio-album-add-queue=${this._onAlbumAddQueue}
         @volumio-navigate=${this._onNavigate}
@@ -841,24 +982,21 @@ class VolumioPanel extends LitElement {
         volumio-url="${volumioUrl}"
         @volumio-card-click=${this._onBrowseItemClick}
         @volumio-card-play=${this._onBrowseItemPlay}
-        @volumio-card-add-queue=${this._onAddItemToQueue}
       ></volumio-artist-detail>
     `;
   }
 
-  _renderSearchView(attrs, volumioUrl) {
+  _renderSearchView(s, volumioUrl) {
     return html`
       <volumio-search-results
         .results=${this._searchResults}
         ?loading=${this._searchLoading}
         query="${this._searchQuery}"
         volumio-url="${volumioUrl}"
-        current-uri="${attrs.uri || ""}"
+        current-uri="${s.uri}"
         @volumio-card-click=${this._onBrowseItemClick}
         @volumio-card-play=${this._onBrowseItemPlay}
-        @volumio-card-add-queue=${this._onAddItemToQueue}
         @volumio-track-click=${this._onTrackPlay}
-        @volumio-track-add-queue=${this._onAddItemToQueue}
       ></volumio-search-results>
     `;
   }
@@ -997,13 +1135,12 @@ class VolumioPanel extends LitElement {
   // ── Browse Methods ────────────────────────────────────────
 
   async _fetchBrowseSources() {
-    if (!this._configEntryId) return;
+    if (!this._adapter.ready) return;
     try {
       const result = await this._callService("get_browse_sources", {});
       const sources = result?.response?.sources || [];
       if (sources.length > 0) {
         this._browseSources = sources;
-        console.debug("[volumio-panel] Browse sources loaded:", sources.length, sources.map(s => `${s.name} → ${s.uri}`));
       }
     } catch (err) {
       console.warn("[volumio-panel] get_browse_sources failed:", err.message);
@@ -1015,8 +1152,8 @@ class VolumioPanel extends LitElement {
     if (this._browseSources.length > 0) {
       return this._browseSources;
     }
-    const entity = this._getEntity();
-    const sourceList = entity?.attributes?.source_list || [];
+    const s = this._adapter.getState();
+    const sourceList = s._raw?.source_list || [];
     return sourceList.map(name => ({
       name,
       plugin_name: name.toLowerCase().replace(/\s+/g, ""),
@@ -1050,7 +1187,7 @@ class VolumioPanel extends LitElement {
   }
 
   async _loadBrowseItems(uri) {
-    if (!this._configEntryId) return;
+    if (!this._adapter.ready) return;
     this._browseLoading = true;
     this._browseItems = [];
 
@@ -1063,10 +1200,6 @@ class VolumioPanel extends LitElement {
         if (list.items) items.push(...list.items);
       }
       this._browseItems = items;
-      console.debug("[volumio-panel] Browse loaded:", uri, items.length, "items");
-      if (items.length > 0) {
-        console.debug("[volumio-panel] First item keys:", Object.keys(items[0]), "data:", JSON.stringify(items[0]).substring(0, 300));
-      }
     } catch (err) {
       console.error("[volumio-panel] Browse failed:", err);
       this._browseItems = [];
@@ -1084,7 +1217,6 @@ class VolumioPanel extends LitElement {
   _onBrowseItemClick(e) {
     const item = e.detail;
     const type = item.type || "folder";
-    console.debug("[volumio-panel] Item clicked:", type, item.title, item.uri);
 
     // Playable types → play directly
     const playable = new Set(["song", "track", "webradio", "mywebradio", "cuesong"]);
@@ -1107,7 +1239,6 @@ class VolumioPanel extends LitElement {
         trail.push({ title: item.title, uri: item.uri, view: "album-detail", service: item.service || "" });
         this._searchTrail = trail;
       }
-      console.debug("[volumio-panel] Album detail: searchTrail=", this._searchTrail);
       this._browseContext = {
         title: item.title,
         artist: item.artist || "",
@@ -1155,17 +1286,14 @@ class VolumioPanel extends LitElement {
   async _onBrowseItemPlay(e) {
     const item = e.detail;
     try {
-      // Clear queue, add item, and play — replaceAndPlay pattern
-      await this._callService("queue_clear", {});
-      await this._callService("queue_add", {
+      await this._callService("replace_and_play", {
         uri: item.uri,
         title: item.title || "",
         service: item.service || "",
         artist: item.artist || "",
         albumart: item.albumart || "",
       });
-      await this._callService("queue_play_index", { index: 0 });
-      console.debug("[volumio-panel] Playing:", item.title);
+      this._refreshQueue();
     } catch (err) {
       console.error("[volumio-panel] Play failed:", err);
     }
@@ -1173,19 +1301,31 @@ class VolumioPanel extends LitElement {
 
   async _onTrackPlay(e) {
     const item = e.detail;
+    const action = this._getDefaultClickAction();
     try {
-      // Clear queue, add track, and play
-      await this._callService("queue_clear", {});
-      await this._callService("queue_add", {
-        uri: item.uri,
-        title: item.title || "",
-        service: item.service || "",
-        artist: item.artist || "",
-        album: item.album || "",
-        albumart: item.albumart || "",
-      });
-      await this._callService("queue_play_index", { index: 0 });
-      console.debug("[volumio-panel] Playing track:", item.title);
+      if (action === "add_to_queue") {
+        await this._callService("queue_add", {
+          uri: item.uri,
+          title: item.title || "",
+          service: item.service || "",
+          artist: item.artist || "",
+          album: item.album || "",
+          albumart: item.albumart || "",
+        });
+        this._refreshQueue();
+        this._showToast("Added to queue");
+      } else {
+        await this._callService("replace_and_play", {
+          uri: item.uri,
+          title: item.title || "",
+          service: item.service || "",
+          artist: item.artist || "",
+          album: item.album || "",
+          albumart: item.albumart || "",
+          type: item.type || "song",
+        });
+        this._refreshQueue();
+      }
     } catch (err) {
       console.error("[volumio-panel] Track play failed:", err);
     }
@@ -1194,13 +1334,11 @@ class VolumioPanel extends LitElement {
   async _onAlbumPlay(e) {
     const { uri } = e.detail;
     try {
-      // Use HA play_media which does clearQueue → addToQueue → play(0)
-      await this.hass.callService("media_player", "play_media", {
-        entity_id: this._entityId,
-        media_content_id: uri,
-        media_content_type: "music",
+      await this._callService("replace_and_play", {
+        uri,
+        service: this._browseContext?.service || "",
       });
-      console.debug("[volumio-panel] Playing album:", uri);
+      this._refreshQueue();
     } catch (err) {
       console.error("[volumio-panel] Album play failed:", err);
     }
@@ -1210,7 +1348,8 @@ class VolumioPanel extends LitElement {
     const { uri } = e.detail;
     try {
       await this._callService("queue_add", { uri });
-      console.debug("[volumio-panel] Added album to queue:", uri);
+      this._refreshQueue();
+      this._showToast("Added to queue");
     } catch (err) {
       console.error("[volumio-panel] Album queue add failed:", err);
     }
@@ -1219,16 +1358,37 @@ class VolumioPanel extends LitElement {
   async _onQueueItemClick(index) {
     try {
       await this._callService("queue_play_index", { index });
-      console.debug("[volumio-panel] Playing queue index:", index);
     } catch (err) {
       console.error("[volumio-panel] Queue play index failed:", err);
     }
   }
 
+  _onQueueClearClick() {
+    this._queueConfirmClear = true;
+  }
+
   async _onQueueClear() {
+    this._queueConfirmClear = false;
+    const s = this._adapter.getState();
+    const wasPlaying = s.state === "playing" || s.state === "paused";
+
     try {
-      await this._callService("queue_clear", {});
-      console.debug("[volumio-panel] Queue cleared");
+      if (wasPlaying && s.uri) {
+        // Keep current track: clear then re-add and resume
+        const currentTrack = {
+          uri: s.uri,
+          title: s.title,
+          artist: s.artist,
+          album: s.album,
+          service: s.source,
+        };
+        await this._callService("queue_clear", {});
+        await this._callService("replace_and_play", currentTrack);
+      } else {
+        await this._callService("queue_clear", {});
+      }
+      this._refreshQueue();
+      this._showToast("Queue cleared");
     } catch (err) {
       console.error("[volumio-panel] Queue clear failed:", err);
     }
@@ -1245,10 +1405,359 @@ class VolumioPanel extends LitElement {
         album: item.album || "",
         albumart: item.albumart || "",
       });
-      console.debug("[volumio-panel] Added to queue:", item.title);
+      this._refreshQueue();
+      this._showToast("Added to queue");
     } catch (err) {
       console.error("[volumio-panel] Add to queue failed:", err);
     }
+  }
+
+  /** Fetch queue via service call and force Lit re-render with new reference. */
+  async _refreshQueue() {
+    if (!this._adapter.ready) return;
+    try {
+      const result = await this._adapter.call("queue_get");
+      if (result?.response?.queue) {
+        this._queue = [...result.response.queue];
+      }
+    } catch (err) {
+      // Silent — pushQueue subscription is the primary source
+    }
+  }
+
+  // ── Queue Item Actions ──────────────────────────────────────
+
+  async _onQueueRemove(e, index) {
+    e.stopPropagation();
+    const removed = this._queue[index];
+    try {
+      await this._callService("queue_remove", { index });
+      this._refreshQueue();
+      this._showToast("Removed from queue", "undo_queue_remove");
+      this._toastUndoData = { item: removed, index };
+    } catch (err) {
+      console.error("[volumio-panel] Queue remove failed:", err);
+    }
+  }
+
+  _onQueueContextMenu(e, item, index) {
+    e.preventDefault();
+    e.stopPropagation();
+    this._ctxTarget = { ...item, index, context: "queue" };
+    this._ctxItems = this._buildContextItems("queue");
+    this._ctxX = e.clientX;
+    this._ctxY = e.clientY;
+    this._ctxOpen = true;
+  }
+
+  _onQueueSaveStart() {
+    if (this._queue.length === 0) return;
+    this._queueSaveName = "";
+    this._queueSaveOpen = true;
+    // Focus input after render
+    this.updateComplete.then(() => {
+      const input = this.shadowRoot?.querySelector(".save-dialog input");
+      if (input) input.focus();
+    });
+  }
+
+  async _onQueueSaveConfirm() {
+    const name = this._queueSaveName.trim();
+    if (!name) return;
+    this._queueSaveOpen = false;
+    try {
+      await this._callService("save_queue_to_playlist", { name });
+      this._showToast(`Saved as playlist "${name}"`);
+    } catch (err) {
+      console.error("[volumio-panel] Save playlist failed:", err);
+      this._showToast("Failed to save playlist");
+    }
+  }
+
+  // ── Drag and Drop ───────────────────────────────────────────
+
+  _onDragStart(e, index) {
+    e.preventDefault();
+    e.stopPropagation();
+    this._dragIndex = index;
+    this._dragOverIndex = -1;
+
+    const onMove = (ev) => {
+      const listEl = this.shadowRoot?.querySelector(".queue-list");
+      if (!listEl) return;
+      const items = listEl.querySelectorAll(".queue-item");
+      let closest = -1;
+      let minDist = Infinity;
+      items.forEach((el, i) => {
+        const rect = el.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        const dist = Math.abs((ev.clientY || ev.touches?.[0]?.clientY || 0) - mid);
+        if (dist < minDist) { minDist = dist; closest = i; }
+      });
+      if (closest !== this._dragOverIndex) {
+        this._dragOverIndex = closest;
+      }
+    };
+
+    const onEnd = async () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onEnd);
+      document.removeEventListener("pointercancel", onEnd);
+
+      const from = this._dragIndex;
+      const to = this._dragOverIndex;
+      this._dragIndex = -1;
+      this._dragOverIndex = -1;
+
+      if (from >= 0 && to >= 0 && from !== to) {
+        try {
+          await this._callService("queue_move", { from_index: from, to_index: to });
+          this._refreshQueue();
+        } catch (err) {
+          console.error("[volumio-panel] Queue move failed:", err);
+        }
+      }
+    };
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onEnd);
+    document.addEventListener("pointercancel", onEnd);
+  }
+
+  // ── Context Menu ────────────────────────────────────────────
+
+  async _onContextMenuRequest(e) {
+    e.stopPropagation();
+    const detail = e.detail;
+    this._ctxTarget = detail;
+    this._ctxItems = this._buildContextItems(detail.context || "track");
+    this._ctxX = detail.x;
+    this._ctxY = detail.y;
+
+    // Fetch playlists for submenu
+    try {
+      const result = await this._callService("playlist_list", {});
+      const playlists = result?.response?.playlists || [];
+      this._ctxPlaylists = playlists.map(name => ({ key: name, label: name }));
+    } catch {
+      this._ctxPlaylists = [];
+    }
+    this._ctxOpen = true;
+  }
+
+  _buildContextItems(context) {
+    const items = [];
+
+    if (context === "album") {
+      items.push({ key: "play", label: "Play", icon: "mdi:play" });
+      items.push({ key: "play_next", label: "Play Next", icon: "mdi:skip-next" });
+      items.push({ key: "add_to_queue", label: "Add to Queue", icon: "mdi:playlist-plus" });
+      items.push({ separator: true });
+      items.push({ key: "add_to_favorites", label: "Add to Favorites", icon: "mdi:heart-outline" });
+      items.push({ key: "add_to_playlist", label: "Add to Playlist", icon: "mdi:playlist-music", submenu: true });
+      items.push({ separator: true });
+      items.push({ key: "go_to_album", label: "Go to Album", icon: "mdi:album" });
+      items.push({ key: "go_to_artist", label: "Go to Artist", icon: "mdi:account-music" });
+    } else if (context === "queue") {
+      items.push({ key: "play", label: "Play Now", icon: "mdi:play" });
+      items.push({ key: "play_next", label: "Play Next", icon: "mdi:skip-next" });
+      items.push({ key: "add_to_queue", label: "Add to Queue", icon: "mdi:playlist-plus" });
+      items.push({ separator: true });
+      items.push({ key: "add_to_favorites", label: "Add to Favorites", icon: "mdi:heart-outline" });
+      items.push({ key: "add_to_playlist", label: "Add to Playlist", icon: "mdi:playlist-music", submenu: true });
+      items.push({ separator: true });
+      items.push({ key: "go_to_album", label: "Go to Album", icon: "mdi:album" });
+      items.push({ key: "go_to_artist", label: "Go to Artist", icon: "mdi:account-music" });
+      items.push({ separator: true });
+      items.push({ key: "remove", label: "Remove", icon: "mdi:close" });
+    } else {
+      // track context (browse, album detail, search)
+      items.push({ key: "play", label: "Play Now", icon: "mdi:play" });
+      items.push({ key: "play_next", label: "Play Next", icon: "mdi:skip-next" });
+      items.push({ key: "add_to_queue", label: "Add to Queue", icon: "mdi:playlist-plus" });
+      items.push({ separator: true });
+      items.push({ key: "add_to_favorites", label: "Add to Favorites", icon: "mdi:heart-outline" });
+      items.push({ key: "add_to_playlist", label: "Add to Playlist", icon: "mdi:playlist-music", submenu: true });
+      items.push({ separator: true });
+      items.push({ key: "go_to_album", label: "Go to Album", icon: "mdi:album" });
+      items.push({ key: "go_to_artist", label: "Go to Artist", icon: "mdi:account-music" });
+    }
+
+    return items;
+  }
+
+  async _onContextAction(e) {
+    const { action, playlist } = e.detail;
+    const item = this._ctxTarget;
+    if (!item) return;
+
+    try {
+      switch (action) {
+        case "play":
+          if (item.context === "queue" && item.index != null) {
+            await this._callService("queue_play_index", { index: item.index });
+          } else {
+            await this._callService("replace_and_play", {
+              uri: item.uri,
+              title: item.title || "",
+              service: item.service || "",
+              artist: item.artist || "",
+              album: item.album || "",
+              albumart: item.albumart || "",
+              type: item.type || "song",
+            });
+            this._refreshQueue();
+          }
+          break;
+
+        case "play_next": {
+          // Add to queue then move to position right after current track
+          await this._callService("queue_add", {
+            uri: item.uri,
+            title: item.title || "",
+            service: item.service || "",
+            artist: item.artist || "",
+            album: item.album || "",
+            albumart: item.albumart || "",
+          });
+          // Move newly added track (last in queue) to after current position
+          const currentPos = this._adapter.getState().queuePosition;
+          const lastIdx = this._queue.length; // just added, so it's at end
+          if (lastIdx > currentPos + 1) {
+            await this._callService("queue_move", { from_index: lastIdx, to_index: currentPos + 1 });
+          }
+          this._refreshQueue();
+          this._showToast("Playing next");
+          break;
+        }
+
+        case "add_to_queue":
+          await this._callService("queue_add", {
+            uri: item.uri,
+            title: item.title || "",
+            service: item.service || "",
+            artist: item.artist || "",
+            album: item.album || "",
+            albumart: item.albumart || "",
+          });
+          this._refreshQueue();
+          this._showToast("Added to queue");
+          break;
+
+        case "add_to_favorites":
+          await this._callService("favorites_add", {
+            uri: item.uri,
+            title: item.title || "",
+            service: item.service || "",
+          });
+          this._showToast("Added to favorites");
+          break;
+
+        case "add_to_playlist":
+          if (playlist === "__new__") {
+            const name = prompt("New playlist name:");
+            if (name) {
+              await this._callService("playlist_create", { name });
+              await this._callService("playlist_add_track", {
+                name,
+                uri: item.uri,
+                service: item.service || "",
+              });
+              this._showToast(`Added to "${name}"`);
+            }
+          } else if (playlist) {
+            await this._callService("playlist_add_track", {
+              name: playlist,
+              uri: item.uri,
+              service: item.service || "",
+            });
+            this._showToast(`Added to "${playlist}"`);
+          }
+          break;
+
+        case "go_to_album":
+          if (item.album || item.title) {
+            this._browseContext = {
+              title: item.album || item.title,
+              artist: item.artist || "",
+              albumart: item.albumart || "",
+              uri: item.uri,
+              service: item.service || "",
+            };
+            this._activeView = "album-detail";
+            if (item.uri) {
+              this._loadBrowseItems(item.uri);
+            }
+          }
+          break;
+
+        case "go_to_artist":
+          if (item.artist) {
+            const artistUri = `globalUriArtist/${encodeURIComponent(item.artist)}`;
+            this._browseContext = {
+              title: item.artist,
+              artist: item.artist,
+              uri: artistUri,
+              service: item.service || "",
+            };
+            this._activeView = "artist-detail";
+            this._browseToArtist(artistUri, item.artist);
+          }
+          break;
+
+        case "remove":
+          if (item.context === "queue" && item.index != null) {
+            await this._callService("queue_remove", { index: item.index });
+            this._refreshQueue();
+            this._showToast("Removed from queue", "undo_queue_remove");
+            this._toastUndoData = { item, index: item.index };
+          }
+          break;
+      }
+    } catch (err) {
+      console.error("[volumio-panel] Context action failed:", err);
+      this._showToast("Action failed");
+    }
+  }
+
+  // ── Toast ───────────────────────────────────────────────────
+
+  _showToast(message, undoAction = null) {
+    this._toastMessage = message;
+    this._toastUndo = undoAction;
+    this._toastOpen = true;
+  }
+
+  async _onToastUndo(e) {
+    const { action } = e.detail;
+    if (action === "undo_queue_remove" && this._toastUndoData) {
+      const { item, index } = this._toastUndoData;
+      try {
+        await this._callService("queue_add", {
+          uri: item.uri,
+          title: item.title || item.name || "",
+          service: item.service || "",
+          artist: item.artist || "",
+          album: item.album || "",
+          albumart: item.albumart || "",
+        });
+        // Try to move it back to original position
+        const newLast = this._queue.length;
+        if (index < newLast) {
+          await this._callService("queue_move", { from_index: newLast, to_index: index });
+        }
+        this._refreshQueue();
+      } catch (err) {
+        console.error("[volumio-panel] Undo failed:", err);
+      }
+    }
+    this._toastUndoData = null;
+  }
+
+  // ── Default Click Action ────────────────────────────────────
+
+  _getDefaultClickAction() {
+    return localStorage.getItem("volumio-default-click") || "play_now";
   }
 
   _onBreadcrumbClick(e) {
@@ -1267,7 +1776,7 @@ class VolumioPanel extends LitElement {
   async _onSearch(e) {
     const { query } = e.detail;
     if (!query || query.length < 2) return;
-    if (!this._configEntryId) return;
+    if (!this._adapter.ready) return;
 
     this._searchQuery = query;
     this._searchLoading = true;
@@ -1281,7 +1790,6 @@ class VolumioPanel extends LitElement {
     try {
       const result = await this._callService("search", { query });
       this._searchResults = result?.response || result || null;
-      console.debug("[volumio-panel] Search results:", query, this._searchResults);
     } catch (err) {
       console.error("[volumio-panel] Search failed:", err);
       this._searchResults = null;
@@ -1321,48 +1829,34 @@ class VolumioPanel extends LitElement {
 
   async _onCommand(e) {
     const { command, value } = e.detail;
-    const entity = this._getEntity();
-    if (!entity || !this._entityId) return;
+    const s = this._adapter.getState();
+    if (s.state === "unavailable") return;
 
     try {
       switch (command) {
         case "play_pause":
-          if (entity.state === "playing") {
-            await this._callMediaPlayerService("media_pause");
-          } else {
-            await this._callMediaPlayerService("media_play");
-          }
+          await this._adapter.playPause();
           break;
         case "next":
-          await this._callMediaPlayerService("media_next_track");
+          await this._adapter.next();
           break;
         case "prev":
-          await this._callMediaPlayerService("media_previous_track");
+          await this._adapter.prev();
           break;
         case "seek":
-          await this._callMediaPlayerService("media_seek", { seek_position: value });
+          await this._adapter.seek(value);
           break;
         case "volume_set":
-          if (this._isVolumeEnabled()) {
-            await this._callMediaPlayerService("set_volume_level", { volume_level: value / 100 });
-          } else {
-            console.debug("[volumio-panel] Volume set ignored — volume control disabled");
-          }
+          await this._adapter.setVolume(value);
           break;
         case "mute_toggle":
-          if (this._isVolumeEnabled()) {
-            await this._callMediaPlayerService("volume_mute", {
-              is_volume_muted: !entity.attributes?.is_volume_muted,
-            });
-          } else {
-            console.debug("[volumio-panel] Mute ignored — volume control disabled");
-          }
+          await this._adapter.toggleMute();
           break;
         case "shuffle_set":
-          await this._callMediaPlayerService("shuffle_set", { shuffle: value });
+          await this._adapter.setShuffle(value);
           break;
         case "repeat_set":
-          await this._callMediaPlayerService("repeat_set", { repeat: value });
+          await this._adapter.setRepeat(value);
           break;
         default:
           console.warn("[volumio-panel] Unknown command:", command);
@@ -1373,51 +1867,38 @@ class VolumioPanel extends LitElement {
   }
 
   async _checkFavorite() {
-    if (!this.hass || !this._configEntryId) return;
+    if (!this._adapter.ready) return;
     try {
-      const result = await this.hass.connection.sendMessagePromise({
-        type: "call_service",
-        domain: "volumio_ws",
-        service: "favorites_list",
-        service_data: { config_entry_id: this._configEntryId },
-        return_response: true,
-      });
+      const result = await this._adapter.call("favorites_list");
       const items = result?.response?.items || [];
       this._favoritesCache = items;
-      const entity = this._getEntity();
-      const uri = entity?.attributes?.uri;
-      this._isFavorite = !!(uri && items.some((it) => it?.uri === uri));
+      const s = this._adapter.getState();
+      this._isFavorite = !!(s.uri && items.some((it) => it?.uri === s.uri));
     } catch (err) {
       console.error("[volumio-panel] favorites_list failed:", err);
     }
   }
 
   async _onToggleFavorite() {
-    const entity = this._getEntity();
-    if (!entity || !this._configEntryId) return;
-    const attrs = entity.attributes || {};
-    const uri = attrs.uri;
-    if (!uri) return;
+    const s = this._adapter.getState();
+    if (!this._adapter.ready || !s.uri) return;
 
     const wasFavorite = this._isFavorite;
     this._isFavorite = !wasFavorite;
 
-    console.debug("[volumio-panel] Toggle favorite:", { wasFavorite, uri, title: attrs.media_title, service: attrs.source, configEntryId: this._configEntryId });
-
     try {
       if (wasFavorite) {
         await this._callService("favorites_remove", {
-          uri,
-          service: attrs.source || "",
+          uri: s.uri,
+          service: s.source,
         });
       } else {
         await this._callService("favorites_add", {
-          uri,
-          title: attrs.media_title || "",
-          service: attrs.source || "",
+          uri: s.uri,
+          title: s.title,
+          service: s.source,
         });
       }
-      console.debug("[volumio-panel] Favorite service call completed");
       setTimeout(() => this._checkFavorite(), 500);
     } catch (err) {
       console.error("[volumio-panel] Favorite toggle failed:", err);
@@ -1428,11 +1909,12 @@ class VolumioPanel extends LitElement {
   // ── Keyboard Shortcuts ────────────────────────────────────
 
   _onKeyDown(e) {
-    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    const target = e.composedPath?.()?.[0] || e.target;
+    if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
     if (!this.isConnected) return;
 
-    const entity = this._getEntity();
-    if (!entity) return;
+    const s = this._adapter.getState();
+    if (s.state === "unavailable") return;
 
     switch (e.key) {
       case " ":
@@ -1445,7 +1927,7 @@ class VolumioPanel extends LitElement {
           this._onCommand({ detail: { command: "next" } });
         } else {
           e.preventDefault();
-          const pos = (entity.attributes?.media_position || 0) + 10;
+          const pos = (s.position || 0) + 10;
           this._onCommand({ detail: { command: "seek", value: pos } });
         }
         break;
@@ -1455,21 +1937,21 @@ class VolumioPanel extends LitElement {
           this._onCommand({ detail: { command: "prev" } });
         } else {
           e.preventDefault();
-          const pos2 = Math.max(0, (entity.attributes?.media_position || 0) - 10);
+          const pos2 = Math.max(0, (s.position || 0) - 10);
           this._onCommand({ detail: { command: "seek", value: pos2 } });
         }
         break;
       case "ArrowUp":
         e.preventDefault();
         {
-          const vol = Math.min(100, Math.round((entity.attributes?.volume_level || 0) * 100) + 2);
+          const vol = Math.min(100, s.volume + 2);
           this._onCommand({ detail: { command: "volume_set", value: vol } });
         }
         break;
       case "ArrowDown":
         e.preventDefault();
         {
-          const vol2 = Math.max(0, Math.round((entity.attributes?.volume_level || 0) * 100) - 2);
+          const vol2 = Math.max(0, s.volume - 2);
           this._onCommand({ detail: { command: "volume_set", value: vol2 } });
         }
         break;
@@ -1479,12 +1961,12 @@ class VolumioPanel extends LitElement {
         break;
       case "s":
       case "S":
-        this._onCommand({ detail: { command: "shuffle_set", value: !entity.attributes?.shuffle } });
+        this._onCommand({ detail: { command: "shuffle_set", value: !s.shuffle } });
         break;
       case "r":
       case "R":
         {
-          const current = entity.attributes?.repeat || "off";
+          const current = s.repeat;
           const next = current === "off" ? "all" : current === "all" ? "one" : "off";
           this._onCommand({ detail: { command: "repeat_set", value: next } });
         }

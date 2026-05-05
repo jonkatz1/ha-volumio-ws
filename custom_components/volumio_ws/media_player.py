@@ -32,8 +32,7 @@ from .const import (
     WS_SET_RANDOM,
     WS_SET_REPEAT,
     WS_GET_STATE,
-    WS_ADD_TO_QUEUE,
-    WS_CLEAR_QUEUE,
+    WS_REPLACE_AND_PLAY,
 )
 from .coordinator import VolumioWebSocketCoordinator
 
@@ -334,11 +333,14 @@ class VolumioMediaPlayer(MediaPlayerEntity):
     async def async_play_media(
         self, media_type: MediaType | str, media_id: str, **kwargs: Any
     ) -> None:
-        """Play media by URI."""
-        # Add to queue and play
-        await self.coordinator.async_emit(WS_CLEAR_QUEUE)
-        await self.coordinator.async_emit(WS_ADD_TO_QUEUE, {"uri": media_id})
-        await self.coordinator.async_emit(WS_PLAY, {"value": 0})
+        """Play media by URI.
+
+        Uses Volumio's native replaceAndPlay to atomically clear the queue,
+        add the item, and start playback in a single WS command.
+        """
+        await self.coordinator.async_emit(
+            WS_REPLACE_AND_PLAY, {"uri": media_id}
+        )
 
     # --- Browse media ---
 

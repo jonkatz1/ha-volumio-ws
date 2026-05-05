@@ -191,7 +191,7 @@ class VolumioAlbumCard extends LitElement {
     const icon = isFolder ? "mdi:folder-music" : "mdi:music-note";
 
     return html`
-      <div class="card ${isFolder ? "folder" : ""}" @click=${this._onClick}>
+      <div class="card ${isFolder ? "folder" : ""}" @click=${this._onClick} @contextmenu=${this._onContextMenu}>
         <div class="art-container">
           ${this.albumart
             ? html`<img
@@ -208,8 +208,8 @@ class VolumioAlbumCard extends LitElement {
             <button class="play-btn" @click=${this._onPlay} title="Play">
               <ha-icon icon="mdi:play"></ha-icon>
             </button>
-            <button class="queue-btn" @click=${this._onAddQueue} title="Add to queue">
-              <ha-icon icon="mdi:playlist-plus"></ha-icon>
+            <button class="queue-btn" @click=${this._onDotsClick} title="More actions">
+              <ha-icon icon="mdi:dots-vertical"></ha-icon>
             </button>
           </div>
         </div>
@@ -256,10 +256,22 @@ class VolumioAlbumCard extends LitElement {
     }));
   }
 
-  _onAddQueue(e) {
+  _onDotsClick(e) {
     e.stopPropagation();
-    this.dispatchEvent(new CustomEvent("volumio-card-add-queue", {
-      detail: this._getItemData(),
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    this._fireContextEvent(rect.right, rect.bottom);
+  }
+
+  _onContextMenu(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    this._fireContextEvent(e.clientX, e.clientY);
+  }
+
+  _fireContextEvent(x, y) {
+    this.dispatchEvent(new CustomEvent("volumio-context-menu", {
+      detail: { ...this._getItemData(), x, y, context: "album" },
       bubbles: true, composed: true,
     }));
   }

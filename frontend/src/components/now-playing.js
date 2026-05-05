@@ -510,7 +510,6 @@ class VolumioNowPlaying extends LitElement {
       b = Math.round(hue2rgb(p, q, h - 1/3) * 255);
 
       this._dominantColor = `rgb(${r}, ${g}, ${b})`;
-      console.debug("[volumio-panel] UltraBlur color extracted:", this._dominantColor);
     } catch {
       // CORS or other error — fall back to no tint
       this._dominantColor = null;

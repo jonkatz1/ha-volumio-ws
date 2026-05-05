@@ -18,6 +18,7 @@ from .const import (
     WS_CLEAR_QUEUE,
     WS_MOVE_QUEUE,
     WS_PLAY,
+    WS_REPLACE_AND_PLAY,
     WS_LIST_PLAYLIST,
     WS_CREATE_PLAYLIST,
     WS_DELETE_PLAYLIST,
@@ -25,6 +26,7 @@ from .const import (
     WS_REMOVE_FROM_PLAYLIST,
     WS_PLAY_PLAYLIST,
     WS_ENQUEUE,
+    WS_SAVE_QUEUE_TO_PLAYLIST,
     WS_ADD_TO_FAVOURITES,
     WS_REMOVE_FROM_FAVOURITES,
     WS_PUSH_STATE,
@@ -421,6 +423,25 @@ class VolumioWebSocketCoordinator:
         await self.async_emit(WS_PLAY, {"value": index})
         return {"success": True, "command": "play"}
 
+    async def async_replace_and_play(
+        self, item: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Atomically clear the queue, add item(s), and start playback.
+
+        Uses Volumio's native replaceAndPlay WS event which handles
+        the clear → add → play sequence server-side, avoiding the race
+        condition that occurs when these are sent as separate events.
+
+        Args:
+            item: Track/album data dict. Expected keys:
+                  uri (required), service, title, artist, album, albumart, type
+
+        Returns:
+            Acknowledgment dict.
+        """
+        await self.async_emit(WS_REPLACE_AND_PLAY, item)
+        return {"success": True, "command": "replaceAndPlay"}
+
     # ── Playlist methods ──────────────────────────────────────────────
 
     async def async_list_playlists(self) -> list[str]:
@@ -526,6 +547,21 @@ class VolumioWebSocketCoordinator:
         """
         await self.async_emit(WS_ENQUEUE, {"name": name})
         return {"success": True, "command": "enqueue"}
+
+    async def async_save_queue_to_playlist(self, name: str) -> dict[str, Any]:
+        """Save the current play queue as a named playlist.
+
+        Uses Volumio's native saveQueueToPlaylist command which reads the
+        queue server-side and writes all tracks to the playlist atomically.
+
+        Args:
+            name: Name for the new playlist.
+
+        Returns:
+            Acknowledgment dict.
+        """
+        await self.async_emit(WS_SAVE_QUEUE_TO_PLAYLIST, {"name": name})
+        return {"success": True, "command": "saveQueueToPlaylist"}
 
     # ── Favorites methods ─────────────────────────────────────────────
 

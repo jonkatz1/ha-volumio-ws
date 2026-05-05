@@ -30,7 +30,6 @@ WS_MOVE_QUEUE = "moveQueue"
 WS_BROWSE_LIBRARY = "browseLibrary"
 WS_SEARCH = "search"
 WS_GET_BROWSE_SOURCES = "getBrowseSources"
-WS_GET_BROWSE_FILTERS = "getBrowseFilters"
 WS_ADD_TO_FAVOURITES = "addToFavourites"
 WS_REMOVE_FROM_FAVOURITES = "removeFromFavourites"
 WS_CREATE_PLAYLIST = "createPlaylist"
@@ -38,13 +37,21 @@ WS_DELETE_PLAYLIST = "deletePlaylist"
 WS_LIST_PLAYLIST = "listPlaylist"
 WS_ADD_TO_PLAYLIST = "addToPlaylist"
 WS_REMOVE_FROM_PLAYLIST = "removeFromPlaylist"
+WS_REPLACE_AND_PLAY = "replaceAndPlay"
 WS_PLAY_PLAYLIST = "playPlaylist"
 WS_ENQUEUE = "enqueue"
-WS_GET_MULTI_ROOM = "getMultiRoomDevices"
-WS_CALL_METHOD = "callMethod"
-WS_SET_SLEEP = "setSleep"
+WS_SAVE_QUEUE_TO_PLAYLIST = "saveQueueToPlaylist"
+
+# ── Future / not yet wired ───────────────────────────────────────────
+# Captured Volumio WS event names with no current caller. Move into the
+# block above when a feature is implemented; do not introduce callers
+# without also wiring the surrounding service/UI.
+WS_GET_BROWSE_FILTERS = "getBrowseFilters"   # Browse filter UI (post-T18 polish)
+WS_GET_MULTI_ROOM = "getMultiRoomDevices"    # Multi-room grouping (no task scheduled)
+WS_CALL_METHOD = "callMethod"                # Generic plugin gateway (rename when first caller lands)
+WS_SET_SLEEP = "setSleep"                    # Sleep timer (no task scheduled)
 WS_GET_SLEEP = "getSleep"
-WS_ADD_ALARM = "addAlarm"
+WS_ADD_ALARM = "addAlarm"                    # Alarms (no task scheduled)
 WS_SET_ALARM = "setAlarm"
 WS_REMOVE_ALARM = "removeAlarm"
 WS_GET_ALARMS = "getAlarms"

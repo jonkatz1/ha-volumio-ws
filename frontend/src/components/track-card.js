@@ -258,8 +258,8 @@ class VolumioTrackCard extends LitElement {
         </div>
         <div class="cell-duration">${this.duration ? formatTime(this.duration) : ""}</div>
         <div class="cell-context">
-          <button class="context-btn" @click=${this._onAddToQueue} title="Add to queue">
-            <ha-icon icon="mdi:playlist-plus"></ha-icon>
+          <button class="context-btn" @click=${this._onDotsClick} title="More actions">
+            <ha-icon icon="mdi:dots-vertical"></ha-icon>
           </button>
         </div>
       </div>
@@ -286,20 +286,22 @@ class VolumioTrackCard extends LitElement {
     }));
   }
 
-  _onAddToQueue(e) {
+  _onDotsClick(e) {
     e.stopPropagation();
     e.preventDefault();
-    this.dispatchEvent(new CustomEvent("volumio-track-add-queue", {
-      detail: this._getItemData(),
-      bubbles: true, composed: true,
-    }));
+    const rect = e.currentTarget.getBoundingClientRect();
+    this._fireContextEvent(rect.right, rect.bottom);
   }
 
   _onContextMenu(e) {
     e.preventDefault();
-    // Right-click also adds to queue for now
-    this.dispatchEvent(new CustomEvent("volumio-track-add-queue", {
-      detail: this._getItemData(),
+    e.stopPropagation();
+    this._fireContextEvent(e.clientX, e.clientY);
+  }
+
+  _fireContextEvent(x, y) {
+    this.dispatchEvent(new CustomEvent("volumio-context-menu", {
+      detail: { ...this._getItemData(), x, y, context: "track" },
       bubbles: true, composed: true,
     }));
   }
