@@ -28,6 +28,8 @@ Rule: each layer calls only the layer directly below. Coordinator methods MUST r
 | T12-14 — Services (queue/playlist/favorites) | DONE | 15 new services, async closure fix. Branch: `feat/T12-14-services`. |
 | T17 — Panel layout shell, player bar, Now Playing | DONE | Three-zone responsive layout, player bar with smooth progress interpolation, Now Playing hero with UltraBlur, quality badges (5-tier detection), source badges, left nav with browse sources, keyboard shortcuts, favorite heart toggle with state, loading/skeleton states. New backend: `favorites_list` service, `bitrate` + `source_list` in `extra_state_attributes`, browse-sources state notification. |
 | T18 — Browse, search, album/artist detail | DONE | 8 new frontend components, 2 new backend services (`browse`, `get_browse_sources`). Browse source grid, list/grid toggle, album/artist detail, search with debounce + grouping + recent searches, breadcrumb navigation with search trail, alpha jump index, basic queue panel, add-to-queue buttons on cards/rows. Branch: `feat/T18-panel-browse-search`. |
+| T19 — Queue panel, context menus, toasts | DONE | Commit f50b247. Queue UI with drag-drop reorder, remove, save-as-playlist, clear-with-confirmation. Context menus on all items. Toast notifications. ha-adapter.js abstraction. replaceAndPlay and saveQueueToPlaylist native WS commands. Branch: `feat/T19-queue-context-toasts`. |
+| T20 — Playlists, favorites, history, settings, quality fix | DONE | Commit 5e6c3b7 on feat/T20-views-settings (merged to main). 5 new components, inferTrackQuality fix for service-name trackType. v0.1.43 deployed. |
 
 Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-initiated PING (`2`) every 23s, server responds PONG (`3`) within 5s. Reconnection with exponential backoff (5s → 60s cap). No external dependencies — aiohttp is HA-native.
 
@@ -120,9 +122,8 @@ Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-init
 - `./deploy.sh` at the project root: builds the frontend, auto-bumps the `manifest.json` patch version, then copies `frontend/volumio-panel.js` and `manifest.json` to `\\192.168.0.23\config\custom_components\volumio_ws\` (`services.py` / `services.yaml` only when newer than the HA copy). Reminds to restart HA at the end; never restarts automatically.
 
 ## Next Tasks
-- **T19 — Queue panel, context menus, toast notifications.** Full queue UI with drag-drop reorder + remove. Context menus on all items. Fix `pushQueue` subscription re-render. Toast notifications.
-- **T20 — Playlists, Favorites, History views.**
-- **T21 — Multi-select.**
+- **T21 — Polish pass, multi-select, accessibility.**
+- **Issue #40 — localStorage JSON.parse crash guard (P3).**
 
 ## Housekeeping
 - `/config/custom_components/volumio_ws.old` should be deleted from the HA config dir (harmless but messy).
@@ -141,3 +142,6 @@ Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-init
 | — | Panel | Alpha index uses `position: fixed` — may overlap queue panel on smaller screens. |
 | — | Panel | No hash routing / deep linking for browse navigation. Browser back/forward doesn't work. |
 | — | Panel | No toast/snackbar feedback for queue actions. |
+| — | History | albumart stored as empty string (HA proxy URLs go stale). History items show fallback icon only. |
+| — | Browse | "Go to Album" from track context menu doesn't resolve album URI for Qobuz/TIDAL tracks. |
+| #40 | Panel | Corrupt localStorage can crash panel constructor. Needs try/catch guards. |
