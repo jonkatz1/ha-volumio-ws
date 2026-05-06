@@ -15,6 +15,7 @@
  */
 import { LitElement, html, css } from "lit";
 import { resolveArt } from "../utils/format-utils.js";
+import { inferTrackQuality } from "../utils/quality-utils.js";
 import "./album-card.js";
 import "./track-card.js";
 
@@ -348,7 +349,7 @@ class VolumioBrowseList extends LitElement {
     return html`
       <div class="browse-grid">
         ${items.map(item => {
-          const art = resolveArt(item.albumart || item.icon, this.volumioUrl);
+          const art = resolveArt(item.albumart, this.volumioUrl);
           const letter = this._getItemLetter(item);
           return html`
             <volumio-album-card
@@ -387,7 +388,11 @@ class VolumioBrowseList extends LitElement {
           <span></span>
         </div>
         ${items.map((item, i) => {
-          const art = resolveArt(item.albumart || item.icon, this.volumioUrl);
+          // item.icon is a CSS class (e.g. "fa fa-music"), not a URL —
+          // never feed it to resolveArt. Fall back to nothing if albumart
+          // is missing; the row stays clean.
+          const art = resolveArt(item.albumart, this.volumioUrl);
+          const quality = inferTrackQuality(item);
           const letter = this._getItemLetter(item);
           return html`
             <volumio-track-card
@@ -401,6 +406,7 @@ class VolumioBrowseList extends LitElement {
               albumart="${art}"
               service="${item.service || ""}"
               type="${item.type || "folder"}"
+              .quality=${quality}
               ?compact=${compact}
               ?is-playing=${this.currentUri && item.uri === this.currentUri}
               @volumio-track-click=${this._onItemClick}

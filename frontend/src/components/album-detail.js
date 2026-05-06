@@ -21,6 +21,7 @@
  */
 import { LitElement, html, css } from "lit";
 import { formatTime, resolveArt } from "../utils/format-utils.js";
+import { inferTrackQuality } from "../utils/quality-utils.js";
 import "./track-card.js";
 import "./quality-badge.js";
 import "./source-badge.js";
@@ -320,7 +321,7 @@ class VolumioAlbumDetail extends LitElement {
       <div class="album-header">
         <div class="album-art-container">
           ${this.albumArt
-            ? html`<img src="${this.albumArt}" alt="${this.albumTitle}" @error=${this._onArtError} />`
+            ? html`<img src="${resolveArt(this.albumArt, this.volumioUrl)}" alt="${this.albumTitle}" @error=${this._onArtError} />`
             : html`<div class="album-art-placeholder">
                 <ha-icon icon="mdi:album"></ha-icon>
               </div>`}
@@ -373,7 +374,8 @@ class VolumioAlbumDetail extends LitElement {
             <span></span>
           </div>
           ${this.tracks.map((track, i) => {
-            const art = resolveArt(track.albumart || track.icon, this.volumioUrl);
+            const art = resolveArt(track.albumart || this.albumArt, this.volumioUrl);
+            const quality = inferTrackQuality(track);
             return html`
               <volumio-track-card
                 .index=${i + 1}
@@ -385,6 +387,7 @@ class VolumioAlbumDetail extends LitElement {
                 albumart="${art}"
                 service="${track.service || this.albumService || ""}"
                 type="${track.type || "song"}"
+                .quality=${quality}
                 ?is-playing=${this.currentUri && track.uri === this.currentUri}
                 @volumio-track-click=${this._onTrackClick}
               ></volumio-track-card>

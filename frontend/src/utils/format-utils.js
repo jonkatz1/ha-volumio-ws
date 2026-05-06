@@ -43,6 +43,9 @@ export function resolveArt(albumart, volumioUrl) {
   if (/^[a-z][a-z0-9+.-]*:/i.test(albumart)) {
     return /^https?:\/\//i.test(albumart) ? albumart : "";
   }
+  // HA-internal paths (e.g. /api/media_player_proxy/...) are served by
+  // Home Assistant itself — never prepend the Volumio host to them.
+  if (/^\/api\//.test(albumart)) return albumart;
   // volumioUrl must be http(s) if provided
   if (volumioUrl && !/^https?:\/\//i.test(volumioUrl)) return "";
   return volumioUrl ? `${volumioUrl}${albumart}` : albumart;

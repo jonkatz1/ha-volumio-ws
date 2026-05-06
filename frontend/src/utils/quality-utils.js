@@ -190,6 +190,69 @@ function _result(tier, label, tierLabel, color, colorBg) {
   return { tier, label, tierLabel, color, colorBg };
 }
 
+// Service-name heuristics for tracks that don't carry codec/bitdepth/samplerate
+// metadata in browseLibrary responses (most of them).
+const SERVICE_LOSSLESS = new Set(["qobuz", "tidal"]);
+const SERVICE_LOSSY = new Set([
+  "spotify", "spop", "youtube", "youtube2", "ytmusic",
+]);
+const SERVICE_STREAM = new Set(["webradio", "pandora"]);
+
+/**
+ * Best-effort quality detection for a browse-list item.
+ *
+ * Volumio's browseLibrary rarely includes samplerate/bitdepth/bitrate in
+ * items, so we derive a tier from URI extension or service name when raw
+ * metadata is absent. Falls back to the same `unknown` result detectQuality
+ * would produce when nothing else is available.
+ */
+export function inferTrackQuality(track) {
+  const tt = track.trackType || track.tracktype;
+  const ttNorm = tt ? String(tt).trim().toLowerCase() : "";
+  const isServiceName = SERVICE_NAMES.has(ttNorm);
+  const hasResolutionMeta =
+    track.samplerate != null || track.bitdepth != null || track.bitrate != null;
+
+  // Only use detectQuality when we have real codec info or resolution metadata.
+  // A bare service name (e.g. "qobuz") with no resolution should fall through
+  // to the URI/service heuristic below.
+  if (hasResolutionMeta || (tt && !isServiceName)) {
+    return detectQuality({
+      trackType: tt,
+      samplerate: track.samplerate,
+      bitdepth: track.bitdepth,
+      bitrate: track.bitrate,
+      isStream: false,
+    });
+  }
+
+  // Heuristic: infer format from URI extension or service name.
+  // Use trackType as service fallback — browse items sometimes omit track.service
+  // but carry the service name in trackType.
+  const uri = (track.uri || "").toLowerCase();
+  const service = (track.service || (isServiceName ? ttNorm : "")).toLowerCase();
+  let format = "";
+  const m = uri.match(/\.([a-z0-9]+)(?:[?#]|$)/);
+  if (m) {
+    const ext = m[1];
+    if (["flac", "alac", "wav", "aiff", "aif", "ape", "wv", "dsf", "dff", "dsd"].includes(ext)) format = ext;
+    else if (["mp3", "ogg", "opus", "aac", "wma"].includes(ext)) format = ext;
+    else if (ext === "m4a") format = "aac";
+  }
+  if (!format) {
+    if (SERVICE_LOSSLESS.has(service)) format = "flac";
+    else if (SERVICE_LOSSY.has(service)) format = "ogg";
+  }
+
+  return detectQuality({
+    trackType: format,
+    samplerate: null,
+    bitdepth: null,
+    bitrate: null,
+    isStream: SERVICE_STREAM.has(service),
+  });
+}
+
 /**
  * Format a lossless quality label string.
  * e.g. "FLAC 24/96", "LOSSLESS 16/44.1", "FLAC"

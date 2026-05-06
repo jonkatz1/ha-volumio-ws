@@ -26,6 +26,11 @@ import "./components/search-results.js";
 import "./components/breadcrumb-bar.js";
 import "./components/context-menu.js";
 import "./components/toast-notification.js";
+import "./components/playlist-list.js";
+import "./components/playlist-detail.js";
+import "./components/favorites-view.js";
+import "./components/history-view.js";
+import "./components/settings-panel.js";
 
 // Map Volumio service names to display labels
 const SERVICE_DISPLAY = {
@@ -91,6 +96,20 @@ class VolumioPanel extends LitElement {
       _queueSaveName: { type: String, state: true },
       _dragIndex: { type: Number, state: true },
       _dragOverIndex: { type: Number, state: true },
+      // Playlist state
+      _playlistItems: { type: Array, state: true },
+      _playlistDetailItems: { type: Array, state: true },
+      _playlistDetailContext: { type: Object, state: true },
+      _playlistLoading: { type: Boolean, state: true },
+      // Favorites state
+      _favoritesItems: { type: Array, state: true },
+      _favoritesLoading: { type: Boolean, state: true },
+      // History state
+      _history: { type: Array, state: true },
+      // Settings state
+      _settingClickAction: { type: String, state: true },
+      _settingQueueThumbnails: { type: Boolean, state: true },
+      _settingBrowseViewMode: { type: String, state: true },
     };
   }
 
@@ -575,6 +594,20 @@ class VolumioPanel extends LitElement {
     this._queueSaveName = "";
     this._dragIndex = -1;
     this._dragOverIndex = -1;
+    // Playlist state
+    this._playlistItems = [];
+    this._playlistDetailItems = [];
+    this._playlistDetailContext = null;
+    this._playlistLoading = false;
+    // Favorites state
+    this._favoritesItems = [];
+    this._favoritesLoading = false;
+    // History state
+    this._history = JSON.parse(localStorage.getItem("volumio-ws-history") || "[]");
+    // Settings state
+    this._settingClickAction = localStorage.getItem("volumio-default-click") || "play_now";
+    this._settingQueueThumbnails = localStorage.getItem("volumio-queue-thumbnails") !== "false";
+    this._settingBrowseViewMode = localStorage.getItem("volumio-browse-view-mode") || "grid";
   }
 
   connectedCallback() {
@@ -584,7 +617,7 @@ class VolumioPanel extends LitElement {
     window.addEventListener("keydown", this._keyHandler);
     // Queue subscription via adapter
     this._adapter.onQueueChange((queue) => {
-      this._queue = queue;
+      this._queue = (queue || []).filter(Boolean);
     });
   }
 
@@ -648,6 +681,7 @@ class VolumioPanel extends LitElement {
         this._lastUri = uri;
         if (uri && this._adapter.ready) {
           this._checkFavorite();
+          this._recordHistory(state);
         } else {
           this._isFavorite = false;
         }
@@ -688,12 +722,22 @@ class VolumioPanel extends LitElement {
     const navSources = this._getNavSources();
 
     return html`
-      <div class="shell" @volumio-context-menu=${this._onContextMenuRequest}>
+      <div class="shell"
+        @volumio-context-menu=${this._onContextMenuRequest}
+        @volumio-playlist-select=${this._onPlaylistSelect}
+        @volumio-playlist-create=${this._onPlaylistCreate}
+        @volumio-playlist-play=${this._onPlaylistPlay}
+        @volumio-playlist-enqueue=${this._onPlaylistEnqueue}
+        @volumio-playlist-delete=${this._onPlaylistDelete}
+        @volumio-playlist-remove-track=${this._onPlaylistRemoveTrack}
+        @volumio-history-clear=${this._onHistoryClear}
+        @volumio-setting-change=${this._onSettingChange}
+      >
         <volumio-top-bar
           active-view="${this._activeView}"
           .breadcrumb=${[]}
           ?narrow=${this.narrow}
-          ?show-back-button=${this._browseStack.length > 0 || this._activeView === "album-detail" || this._activeView === "artist-detail" || !!this._searchQuery}
+          ?show-back-button=${this._browseStack.length > 0 || this._activeView === "album-detail" || this._activeView === "artist-detail" || this._activeView === "playlist-detail" || !!this._searchQuery}
           @volumio-navigate=${this._onNavigate}
           @volumio-toggle-nav=${this._onToggleNav}
           @volumio-toggle-queue=${this._onToggleQueue}
@@ -706,18 +750,24 @@ class VolumioPanel extends LitElement {
           ${this._renderLeftZone(navSources)}
 
           <div class="center-zone">
-            ${this._activeView === "browse" && this._browseStack.length > 0 ? html`
-              <volumio-breadcrumb-bar
-                .trail=${this._browseStack}
-                @volumio-breadcrumb-click=${this._onBreadcrumbClick}
-              ></volumio-breadcrumb-bar>
-            ` : ""}
-            ${this._searchTrail.length > 0 && (this._activeView === "album-detail" || this._activeView === "artist-detail") ? html`
-              <volumio-breadcrumb-bar
-                .trail=${this._searchTrail}
-                @volumio-breadcrumb-click=${this._onSearchBreadcrumbClick}
-              ></volumio-breadcrumb-bar>
-            ` : ""}
+            ${this._searchTrail.length > 0 && (this._activeView === "album-detail" || this._activeView === "artist-detail")
+              ? html`
+                  <volumio-breadcrumb-bar
+                    .trail=${this._searchTrail}
+                    @volumio-breadcrumb-click=${this._onSearchBreadcrumbClick}
+                  ></volumio-breadcrumb-bar>
+                `
+              : (this._browseStack.length > 0 &&
+                 (this._activeView === "browse" ||
+                  this._activeView === "album-detail" ||
+                  this._activeView === "artist-detail"))
+                ? html`
+                    <volumio-breadcrumb-bar
+                      .trail=${this._browseStack}
+                      @volumio-breadcrumb-click=${this._onBreadcrumbClick}
+                    ></volumio-breadcrumb-bar>
+                  `
+                : ""}
             ${this._activeView === "album-detail" || this._activeView === "artist-detail"
               ? this._renderCenterContent(s, qualityInfo, artUrl)
               : this._searchQuery
@@ -853,7 +903,9 @@ class VolumioPanel extends LitElement {
                   <div>Browse for music to start playing.</div>
                   <button class="browse-btn" @click=${() => this._onNavigate({ detail: { view: "browse" } })}>Browse</button>
                 </div>`
-              : this._queue.map((item, i) => html`
+              : this._queue.map((item, i) => {
+                if (!item) return "";
+                return html`
                 <div
                   class="queue-item ${i === currentPosition ? "playing" : ""} ${i === this._dragIndex ? "dragging" : ""} ${i === this._dragOverIndex ? (this._dragIndex < i ? "drag-over-below" : "drag-over-above") : ""}"
                   @click=${() => this._onQueueItemClick(i)}
@@ -864,11 +916,13 @@ class VolumioPanel extends LitElement {
                   >
                     <ha-icon icon="mdi:drag-horizontal-variant"></ha-icon>
                   </div>
-                  <div class="qi-art">
-                    ${item.albumart
-                      ? html`<img src="${resolveArt(item.albumart, volumioUrl)}" alt="" loading="lazy" />`
-                      : html`<ha-icon icon="mdi:music-note"></ha-icon>`}
-                  </div>
+                  ${this._settingQueueThumbnails ? html`
+                    <div class="qi-art">
+                      ${item.albumart
+                        ? html`<img src="${resolveArt(item.albumart, volumioUrl)}" alt="" loading="lazy" />`
+                        : html`<ha-icon icon="mdi:music-note"></ha-icon>`}
+                    </div>
+                  ` : ""}
                   <div class="qi-info">
                     <div class="qi-title">${item.name || item.title || "—"}</div>
                     <div class="qi-artist">${item.artist || ""}</div>
@@ -880,7 +934,8 @@ class VolumioPanel extends LitElement {
                     <ha-icon icon="mdi:close"></ha-icon>
                   </button>
                 </div>
-              `)}
+              `;
+              })}
           </div>
         </div>
       </div>
@@ -914,13 +969,15 @@ class VolumioPanel extends LitElement {
       case "artist-detail":
         return this._renderArtistDetail(volumioUrl);
       case "playlists":
-        return this._renderPlaceholder("Playlists", "mdi:playlist-music-outline", "Your playlists — coming in T20");
+        return this._renderPlaylistList();
+      case "playlist-detail":
+        return this._renderPlaylistDetail();
       case "favorites":
-        return this._renderPlaceholder("Favorites", "mdi:heart", "Your favorites — coming in T20");
+        return this._renderFavorites();
       case "history":
-        return this._renderPlaceholder("History", "mdi:history", "Recently played — coming in T20");
+        return this._renderHistory();
       case "settings":
-        return this._renderPlaceholder("Settings", "mdi:cog", "Panel settings — coming in T20");
+        return this._renderSettings();
       default:
         return this._renderPlaceholder("", "mdi:help-circle", `Unknown view: ${this._activeView}`);
     }
@@ -1011,6 +1068,73 @@ class VolumioPanel extends LitElement {
     `;
   }
 
+  _renderPlaylistList() {
+    return html`
+      <volumio-playlist-list
+        .playlists=${this._playlistItems}
+        ?loading=${this._playlistLoading}
+      ></volumio-playlist-list>
+    `;
+  }
+
+  _renderPlaylistDetail() {
+    const ctx = this._playlistDetailContext || {};
+    const s = this._adapter.getState();
+    const volumioUrl = this._adapter.getVolumioUrl();
+    return html`
+      <volumio-playlist-detail
+        playlist-name="${ctx.name || ""}"
+        playlist-uri="${ctx.uri || ""}"
+        .tracks=${this._playlistDetailItems}
+        ?loading=${this._playlistLoading}
+        current-uri="${s.uri}"
+        volumio-url="${volumioUrl}"
+        @volumio-track-click=${this._onTrackPlay}
+      ></volumio-playlist-detail>
+    `;
+  }
+
+  _renderFavorites() {
+    const s = this._adapter.getState();
+    const volumioUrl = this._adapter.getVolumioUrl();
+    return html`
+      <volumio-favorites-view
+        .items=${this._favoritesItems}
+        ?loading=${this._favoritesLoading}
+        current-uri="${s.uri}"
+        volumio-url="${volumioUrl}"
+        @volumio-track-click=${this._onTrackPlay}
+      ></volumio-favorites-view>
+    `;
+  }
+
+  _renderHistory() {
+    const s = this._adapter.getState();
+    const volumioUrl = this._adapter.getVolumioUrl();
+    return html`
+      <volumio-history-view
+        .history=${this._history}
+        current-uri="${s.uri}"
+        volumio-url="${volumioUrl}"
+        @volumio-track-click=${this._onTrackPlay}
+      ></volumio-history-view>
+    `;
+  }
+
+  _renderSettings() {
+    return html`
+      <volumio-settings-panel
+        click-action="${this._settingClickAction}"
+        ?queue-thumbnails=${this._settingQueueThumbnails}
+        browse-view-mode="${this._settingBrowseViewMode}"
+        .aboutInfo=${{
+          volumioUrl: this._adapter.getVolumioUrl(),
+          entityId: this._adapter.entityId,
+        }}
+      ></volumio-settings-panel>
+    `;
+  }
+
   // ── Event Handlers ────────────────────────────────────────
 
   _onNavigate(e) {
@@ -1052,6 +1176,24 @@ class VolumioPanel extends LitElement {
           const artistUri = `globalUriArtist/${encodeURIComponent(artist)}`;
           this._browseToArtist(artistUri, artist);
         }
+        break;
+
+      case "playlists":
+        this._activeView = "playlists";
+        this._showNavFlyout = false;
+        this._searchQuery = "";
+        this._searchResults = null;
+        this._searchTrail = [];
+        this._loadPlaylists();
+        break;
+
+      case "favorites":
+        this._activeView = "favorites";
+        this._showNavFlyout = false;
+        this._searchQuery = "";
+        this._searchResults = null;
+        this._searchTrail = [];
+        this._loadFavorites();
         break;
 
       default:
@@ -1110,6 +1252,10 @@ class VolumioPanel extends LitElement {
       this._searchQuery = "";
       this._searchResults = null;
       this._searchTrail = [];
+      return;
+    }
+    if (this._activeView === "playlist-detail") {
+      this._activeView = "playlists";
       return;
     }
     if (this._activeView === "album-detail" || this._activeView === "artist-detail") {
@@ -1194,17 +1340,252 @@ class VolumioPanel extends LitElement {
     try {
       const result = await this._callService("browse", { uri });
       const nav = result?.response?.navigation || result?.navigation || {};
+      const info = nav.info || null;
       const lists = nav.lists || [];
       const items = [];
       for (const list of lists) {
         if (list.items) items.push(...list.items);
       }
       this._browseItems = items;
+
+      // Promote to album-detail when the response describes an album.
+      // Detection: info.type === "album" (mpd canonical) OR info has an
+      // album+artist pair and the body is a track list (qobuz returns
+      // info.type:"song" for an album URI but populates info.album).
+      const looksLikeAlbum =
+        !!info &&
+        (info.type === "album" ||
+          (!!info.album &&
+            !!info.artist &&
+            items.length > 0 &&
+            items.every((it) => it && it.type === "song")));
+      if (looksLikeAlbum) {
+        // Resolve info.albumart against volumio_url. The album-detail
+        // component renders <img src="${albumArt}"> directly — for raw
+        // /albumart?... paths we must produce an absolute URL.
+        const volumioUrl = this._adapter.getVolumioUrl();
+        this._browseContext = {
+          title: info.title || info.album || "",
+          artist: info.artist || "",
+          albumart: resolveArt(info.albumart || "", volumioUrl),
+          uri: info.uri || uri,
+          service: info.service || "",
+        };
+        this._activeView = "album-detail";
+      }
     } catch (err) {
       console.error("[volumio-panel] Browse failed:", err);
       this._browseItems = [];
     }
     this._browseLoading = false;
+  }
+
+  // ── Playlist Methods ────────────────────────────────────────
+
+  async _loadPlaylists() {
+    if (!this._adapter.ready) return;
+    this._playlistLoading = true;
+    try {
+      const result = await this._callService("browse", { uri: "playlists" });
+      const nav = result?.response?.navigation || result?.navigation || {};
+      const lists = nav.lists || [];
+      const items = [];
+      for (const list of lists) {
+        if (list.items) items.push(...list.items);
+      }
+      this._playlistItems = items;
+    } catch (err) {
+      console.error("[volumio-panel] Load playlists failed:", err);
+      this._playlistItems = [];
+    }
+    this._playlistLoading = false;
+  }
+
+  async _loadPlaylistDetail(uri) {
+    if (!this._adapter.ready) return;
+    this._playlistLoading = true;
+    this._playlistDetailItems = [];
+    try {
+      const result = await this._callService("browse", { uri });
+      const nav = result?.response?.navigation || result?.navigation || {};
+      const lists = nav.lists || [];
+      const items = [];
+      for (const list of lists) {
+        if (list.items) items.push(...list.items);
+      }
+      this._playlistDetailItems = items;
+    } catch (err) {
+      console.error("[volumio-panel] Load playlist detail failed:", err);
+      this._playlistDetailItems = [];
+    }
+    this._playlistLoading = false;
+  }
+
+  // ── Playlist Event Handlers ─────────────────────────────────
+
+  _onPlaylistSelect(e) {
+    const { name, uri } = e.detail;
+    this._playlistDetailContext = { name, uri };
+    this._activeView = "playlist-detail";
+    this._loadPlaylistDetail(uri);
+  }
+
+  async _onPlaylistCreate(e) {
+    const { name } = e.detail;
+    try {
+      await this._callService("playlist_create", { name });
+      this._showToast(`Playlist "${name}" created`);
+      this._loadPlaylists();
+    } catch (err) {
+      console.error("[volumio-panel] Create playlist failed:", err);
+      this._showToast("Failed to create playlist");
+    }
+  }
+
+  async _onPlaylistPlay(e) {
+    const { name } = e.detail;
+    try {
+      await this._callService("playlist_play", { name });
+      this._refreshQueue();
+    } catch (err) {
+      console.error("[volumio-panel] Play playlist failed:", err);
+    }
+  }
+
+  async _onPlaylistEnqueue(e) {
+    const { name } = e.detail;
+    try {
+      await this._callService("playlist_enqueue", { name });
+      this._refreshQueue();
+      this._showToast(`Playlist "${name}" added to queue`);
+    } catch (err) {
+      console.error("[volumio-panel] Enqueue playlist failed:", err);
+    }
+  }
+
+  async _onPlaylistDelete(e) {
+    const { name } = e.detail;
+    try {
+      await this._callService("playlist_delete", { name });
+      this._showToast(`Playlist "${name}" deleted`);
+      // If we're on the detail view of the deleted playlist, go back
+      if (this._activeView === "playlist-detail" && this._playlistDetailContext?.name === name) {
+        this._activeView = "playlists";
+      }
+      this._loadPlaylists();
+    } catch (err) {
+      console.error("[volumio-panel] Delete playlist failed:", err);
+      this._showToast("Failed to delete playlist");
+    }
+  }
+
+  async _onPlaylistRemoveTrack(e) {
+    const { playlistName, uri, service } = e.detail;
+    try {
+      await this._callService("playlist_remove_track", {
+        name: playlistName,
+        uri,
+        service: service || undefined,
+      });
+      this._showToast("Track removed from playlist");
+      // Refresh the playlist detail
+      if (this._playlistDetailContext?.uri) {
+        this._loadPlaylistDetail(this._playlistDetailContext.uri);
+      }
+    } catch (err) {
+      console.error("[volumio-panel] Remove track from playlist failed:", err);
+      this._showToast("Failed to remove track");
+    }
+  }
+
+  // ── Favorites Methods ───────────────────────────────────────
+
+  async _loadFavorites() {
+    if (!this._adapter.ready) return;
+    this._favoritesLoading = true;
+    try {
+      const result = await this._adapter.call("favorites_list");
+      const items = result?.response?.items || [];
+      this._favoritesItems = items;
+      this._favoritesCache = items;
+    } catch (err) {
+      console.error("[volumio-panel] Load favorites failed:", err);
+      this._favoritesItems = [];
+    }
+    this._favoritesLoading = false;
+  }
+
+  // ── History Methods ─────────────────────────────────────────
+
+  _recordHistory(state) {
+    if (!state.title || state.state === "unavailable") return;
+    const now = Date.now();
+    let history = [...this._history];
+
+    // Dedup: if same URI within 60s, update timestamp instead of adding
+    const recent = history[0];
+    if (recent && recent.uri === state.uri && (now - recent.timestamp) < 60000) {
+      history[0] = { ...recent, timestamp: now };
+    } else {
+      const entry = {
+        uri: state.uri,
+        title: state.title,
+        artist: state.artist,
+        album: state.album,
+        // HA media_player_proxy URL — same-origin, works without browser
+        // having to reach Volumio:3000 directly. Persists for the HA
+        // session; if it expires the @error handler falls back to the
+        // music-note icon via :empty::after.
+        albumart: state.albumArt || "",
+        service: state.source,
+        trackType: state.trackType,
+        samplerate: state.samplerate,
+        bitdepth: state.bitdepth,
+        timestamp: now,
+      };
+      history.unshift(entry);
+    }
+
+    // Cap at 500
+    if (history.length > 500) {
+      history = history.slice(0, 500);
+    }
+
+    this._history = history;
+    try {
+      localStorage.setItem("volumio-ws-history", JSON.stringify(history));
+    } catch (err) {
+      // localStorage may be full — trim and retry
+      history = history.slice(0, 250);
+      this._history = history;
+      localStorage.setItem("volumio-ws-history", JSON.stringify(history));
+    }
+  }
+
+  _onHistoryClear() {
+    this._history = [];
+    localStorage.removeItem("volumio-ws-history");
+    this._showToast("History cleared");
+  }
+
+  // ── Settings Methods ────────────────────────────────────────
+
+  _onSettingChange(e) {
+    const { key, value } = e.detail;
+    switch (key) {
+      case "clickAction":
+        this._settingClickAction = value;
+        localStorage.setItem("volumio-default-click", value);
+        break;
+      case "queueThumbnails":
+        this._settingQueueThumbnails = value;
+        localStorage.setItem("volumio-queue-thumbnails", String(value));
+        break;
+      case "browseViewMode":
+        this._settingBrowseViewMode = value;
+        localStorage.setItem("volumio-browse-view-mode", value);
+        break;
+    }
   }
 
   _onSourceSelect(e) {
@@ -1346,12 +1727,41 @@ class VolumioPanel extends LitElement {
 
   async _onAlbumAddQueue(e) {
     const { uri } = e.detail;
+    // Volumio's addToQueue does NOT expand an album URI into its tracks
+    // (replaceAndPlay does, but that clears the queue first — destructive).
+    // We have the album's tracks already loaded in _browseItems thanks to
+    // the album-detail flow, so enqueue each one individually.
+    const tracks = (this._browseItems || []).filter(
+      (it) => it && (it.type === "song" || it.type === "track")
+    );
+    if (tracks.length === 0) {
+      // Fallback: best-effort single-URI add (works for mpd local files).
+      try {
+        await this._callService("queue_add", { uri });
+        this._refreshQueue();
+        this._showToast("Added to queue");
+      } catch (err) {
+        console.error("[volumio-panel] Album queue add failed:", err);
+        this._showToast("Failed to add album");
+      }
+      return;
+    }
     try {
-      await this._callService("queue_add", { uri });
+      for (const t of tracks) {
+        await this._callService("queue_add", {
+          uri: t.uri,
+          title: t.title || "",
+          service: t.service || this._browseContext?.service || "",
+          artist: t.artist || "",
+          album: t.album || this._browseContext?.title || "",
+          albumart: t.albumart || "",
+        });
+      }
       this._refreshQueue();
-      this._showToast("Added to queue");
+      this._showToast(`Added ${tracks.length} track${tracks.length === 1 ? "" : "s"} to queue`);
     } catch (err) {
       console.error("[volumio-panel] Album queue add failed:", err);
+      this._showToast("Failed to add album");
     }
   }
 
@@ -1418,7 +1828,7 @@ class VolumioPanel extends LitElement {
     try {
       const result = await this._adapter.call("queue_get");
       if (result?.response?.queue) {
-        this._queue = [...result.response.queue];
+        this._queue = result.response.queue.filter(Boolean);
       }
     } catch (err) {
       // Silent — pushQueue subscription is the primary source
@@ -1533,8 +1943,13 @@ class VolumioPanel extends LitElement {
     this._ctxItems = this._buildContextItems(detail.context || "track");
     this._ctxX = detail.x;
     this._ctxY = detail.y;
+    // Open menu immediately so it never appears unresponsive even if the
+    // playlist_list call is slow or hangs (Volumio's pushListPlaylist
+    // doesn't always come back after rapid queue mutations). Submenu
+    // populates when the fetch completes.
+    this._ctxOpen = true;
 
-    // Fetch playlists for submenu
+    // Fetch playlists for submenu (background, non-blocking)
     try {
       const result = await this._callService("playlist_list", {});
       const playlists = result?.response?.playlists || [];
@@ -1542,7 +1957,6 @@ class VolumioPanel extends LitElement {
     } catch {
       this._ctxPlaylists = [];
     }
-    this._ctxOpen = true;
   }
 
   _buildContextItems(context) {
@@ -1570,6 +1984,28 @@ class VolumioPanel extends LitElement {
       items.push({ key: "go_to_artist", label: "Go to Artist", icon: "mdi:account-music" });
       items.push({ separator: true });
       items.push({ key: "remove", label: "Remove", icon: "mdi:close" });
+    } else if (context === "playlist") {
+      items.push({ key: "play", label: "Play", icon: "mdi:play" });
+      items.push({ key: "enqueue", label: "Enqueue", icon: "mdi:playlist-plus" });
+      items.push({ separator: true });
+      items.push({ key: "delete_playlist", label: "Delete Playlist", icon: "mdi:delete-outline" });
+    } else if (context === "favorite") {
+      items.push({ key: "play", label: "Play Now", icon: "mdi:play" });
+      items.push({ key: "add_to_queue", label: "Add to Queue", icon: "mdi:playlist-plus" });
+      items.push({ separator: true });
+      items.push({ key: "remove_favorite", label: "Remove from Favorites", icon: "mdi:heart-off" });
+      items.push({ separator: true });
+      items.push({ key: "go_to_album", label: "Go to Album", icon: "mdi:album" });
+      items.push({ key: "go_to_artist", label: "Go to Artist", icon: "mdi:account-music" });
+    } else if (context === "history") {
+      items.push({ key: "play", label: "Play Now", icon: "mdi:play" });
+      items.push({ key: "add_to_queue", label: "Add to Queue", icon: "mdi:playlist-plus" });
+      items.push({ separator: true });
+      items.push({ key: "add_to_favorites", label: "Add to Favorites", icon: "mdi:heart-outline" });
+      items.push({ key: "add_to_playlist", label: "Add to Playlist", icon: "mdi:playlist-music", submenu: true });
+      items.push({ separator: true });
+      items.push({ key: "go_to_album", label: "Go to Album", icon: "mdi:album" });
+      items.push({ key: "go_to_artist", label: "Go to Artist", icon: "mdi:account-music" });
     } else {
       // track context (browse, album detail, search)
       items.push({ key: "play", label: "Play Now", icon: "mdi:play" });
@@ -1594,7 +2030,10 @@ class VolumioPanel extends LitElement {
     try {
       switch (action) {
         case "play":
-          if (item.context === "queue" && item.index != null) {
+          if (item.context === "playlist" && item.title) {
+            await this._callService("playlist_play", { name: item.title });
+            this._refreshQueue();
+          } else if (item.context === "queue" && item.index != null) {
             await this._callService("queue_play_index", { index: item.index });
           } else {
             await this._callService("replace_and_play", {
@@ -1611,23 +2050,41 @@ class VolumioPanel extends LitElement {
           break;
 
         case "play_next": {
-          // Add to queue then move to position right after current track
-          await this._callService("queue_add", {
-            uri: item.uri,
-            title: item.title || "",
-            service: item.service || "",
-            artist: item.artist || "",
-            album: item.album || "",
-            albumart: item.albumart || "",
-          });
-          // Move newly added track (last in queue) to after current position
-          const currentPos = this._adapter.getState().queuePosition;
-          const lastIdx = this._queue.length; // just added, so it's at end
-          if (lastIdx > currentPos + 1) {
-            await this._callService("queue_move", { from_index: lastIdx, to_index: currentPos + 1 });
+          // Determine the tracks to insert. For an album context, expand
+          // from the loaded _browseItems (Volumio's addToQueue does not
+          // expand album URIs); for a single track context, just the one.
+          const isAlbum = item.context === "album" || item.type === "album";
+          const tracks = isAlbum
+            ? (this._browseItems || []).filter((it) => it && (it.type === "song" || it.type === "track"))
+            : [item];
+          if (tracks.length === 0) break;
+
+          const currentPos = this._adapter.getState().queuePosition ?? -1;
+          const startIdx = this._queue.length; // first new track lands here
+          for (const t of tracks) {
+            await this._callService("queue_add", {
+              uri: t.uri,
+              title: t.title || "",
+              service: t.service || this._browseContext?.service || "",
+              artist: t.artist || "",
+              album: t.album || (isAlbum ? this._browseContext?.title : "") || "",
+              albumart: t.albumart || "",
+            });
+          }
+          // Move each newly-added track to right after the current track,
+          // preserving order. After moving the first, indices shift.
+          let target = currentPos + 1;
+          for (let i = 0; i < tracks.length; i++) {
+            // The next un-moved track sits at: startIdx + i (Volumio
+            // appends; earlier moves don't change indices >= startIdx + i).
+            const from = startIdx + i;
+            if (from > target) {
+              await this._callService("queue_move", { from_index: from, to_index: target });
+            }
+            target += 1;
           }
           this._refreshQueue();
-          this._showToast("Playing next");
+          this._showToast(tracks.length === 1 ? "Playing next" : `Queued ${tracks.length} tracks next`);
           break;
         }
 
@@ -1677,16 +2134,27 @@ class VolumioPanel extends LitElement {
 
         case "go_to_album":
           if (item.album || item.title) {
+            // For mpd local files, the album is reachable via
+            // albums://<artist>/<album>. Use that when we have artist+album.
+            // For services (qobuz/tidal/etc.) we don't have a reliable
+            // album URI — leave the track list empty and just show the
+            // album header. Avoids the "single track" bug where we'd
+            // browse the track URI itself and get one item back.
+            let albumUri = "";
+            if (item.service === "mpd" && item.artist && item.album) {
+              albumUri = `albums://${encodeURIComponent(item.artist)}/${encodeURIComponent(item.album)}`;
+            }
             this._browseContext = {
               title: item.album || item.title,
               artist: item.artist || "",
               albumart: item.albumart || "",
-              uri: item.uri,
+              uri: albumUri,
               service: item.service || "",
             };
+            this._browseItems = [];
             this._activeView = "album-detail";
-            if (item.uri) {
-              this._loadBrowseItems(item.uri);
+            if (albumUri) {
+              this._loadBrowseItems(albumUri);
             }
           }
           break;
@@ -1712,6 +2180,38 @@ class VolumioPanel extends LitElement {
             this._showToast("Removed from queue", "undo_queue_remove");
             this._toastUndoData = { item, index: item.index };
           }
+          break;
+
+        case "enqueue":
+          if (item.type === "playlist" && item.title) {
+            await this._callService("playlist_enqueue", { name: item.title });
+            this._refreshQueue();
+            this._showToast(`Playlist "${item.title}" added to queue`);
+          }
+          break;
+
+        case "delete_playlist":
+          if (item.title) {
+            await this._callService("playlist_delete", { name: item.title });
+            this._showToast(`Playlist "${item.title}" deleted`);
+            if (this._activeView === "playlists") {
+              this._loadPlaylists();
+            }
+          }
+          break;
+
+        case "remove_favorite":
+          await this._callService("favorites_remove", {
+            uri: item.uri,
+            service: item.service || undefined,
+          });
+          this._showToast("Removed from favorites");
+          // Refresh favorites if on that view
+          if (this._activeView === "favorites") {
+            this._loadFavorites();
+          }
+          // Also refresh the favorite heart state
+          setTimeout(() => this._checkFavorite(), 500);
           break;
       }
     } catch (err) {
@@ -1757,7 +2257,7 @@ class VolumioPanel extends LitElement {
   // ── Default Click Action ────────────────────────────────────
 
   _getDefaultClickAction() {
-    return localStorage.getItem("volumio-default-click") || "play_now";
+    return this._settingClickAction;
   }
 
   _onBreadcrumbClick(e) {
