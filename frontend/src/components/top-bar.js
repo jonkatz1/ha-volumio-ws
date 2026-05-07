@@ -31,8 +31,11 @@ class VolumioTopBar extends LitElement {
       showBackButton: { type: Boolean, attribute: "show-back-button" },
       narrow: { type: Boolean },
       searchQuery: { type: String, attribute: "search-query" },
+      devices: { type: Array },
+      activeDeviceId: { type: String, attribute: "active-device-id" },
       _searchValue: { type: String, state: true },
       _searchFocused: { type: Boolean, state: true },
+      _deviceMenuOpen: { type: Boolean, state: true },
     };
   }
 
@@ -232,6 +235,65 @@ class VolumioTopBar extends LitElement {
         overflow: hidden;
       }
 
+      .device-selector {
+        position: relative;
+        flex-shrink: 0;
+      }
+
+      .device-menu {
+        position: absolute;
+        top: calc(100% + 4px);
+        right: 0;
+        min-width: 200px;
+        background: var(--card-background-color, #1e1e1e);
+        border: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+        border-radius: 8px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+        padding: 4px;
+        z-index: 110;
+      }
+
+      .device-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border: none;
+        background: transparent;
+        color: var(--primary-text-color);
+        width: 100%;
+        text-align: left;
+        font-size: 13px;
+        cursor: pointer;
+        border-radius: 6px;
+      }
+
+      .device-menu-item:hover {
+        background: var(--divider-color, rgba(255,255,255,0.08));
+      }
+
+      .device-menu-item.active {
+        font-weight: 600;
+      }
+
+      .device-menu-item ha-icon {
+        --mdc-icon-size: 18px;
+        color: var(--primary-color, #03a9f4);
+        flex-shrink: 0;
+      }
+
+      .device-menu-item .device-menu-spacer {
+        width: 18px;
+        flex-shrink: 0;
+      }
+
+      .device-menu-item .device-menu-name {
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
       .breadcrumb-segment {
         cursor: pointer;
         color: var(--secondary-text-color);
@@ -279,10 +341,41 @@ class VolumioTopBar extends LitElement {
     this.showBackButton = false;
     this.narrow = false;
     this.searchQuery = "";
+    this.devices = [];
+    this.activeDeviceId = "";
     this._searchValue = "";
     this._searchFocused = false;
+    this._deviceMenuOpen = false;
     this._debounceTimer = null;
-    this._recentSearches = JSON.parse(localStorage.getItem("volumio-recent-searches") || "[]");
+    // Resilient against corrupt/quota-exceeded localStorage (issue #40)
+    let recent = [];
+    try {
+      recent = JSON.parse(localStorage.getItem("volumio-recent-searches") || "[]");
+      if (!Array.isArray(recent)) recent = [];
+    } catch {
+      recent = [];
+    }
+    this._recentSearches = recent;
+    this._onDocClick = this._onDocClick.bind(this);
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    document.addEventListener("click", this._onDocClick);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    document.removeEventListener("click", this._onDocClick);
+  }
+
+  _onDocClick(e) {
+    if (!this._deviceMenuOpen) return;
+    // Close the device menu when clicking outside the host element.
+    const path = e.composedPath ? e.composedPath() : [];
+    if (!path.includes(this)) {
+      this._deviceMenuOpen = false;
+    }
   }
 
   render() {
@@ -357,10 +450,69 @@ class VolumioTopBar extends LitElement {
         >
           <ha-icon icon="mdi:playlist-music"></ha-icon>
         </button>
+
+        ${this._renderDeviceSelector()}
       </div>
 
       ${this.breadcrumb.length > 0 ? this._renderBreadcrumb() : ""}
     `;
+  }
+
+  _renderDeviceSelector() {
+    const devices = Array.isArray(this.devices) ? this.devices : [];
+    if (devices.length <= 1) return "";
+    const active = devices.find((d) => d.config_entry_id === this.activeDeviceId)
+      || devices[0];
+    const activeName = active?.name || "Device";
+    return html`
+      <div class="device-selector">
+        <button
+          class="icon-btn"
+          @click=${this._toggleDeviceMenu}
+          title="Device: ${activeName} — switch"
+          aria-label="Switch Volumio device (current: ${activeName})"
+          aria-haspopup="listbox"
+          aria-expanded=${this._deviceMenuOpen ? "true" : "false"}
+        >
+          <ha-icon icon="mdi:speaker-multiple"></ha-icon>
+        </button>
+        ${this._deviceMenuOpen ? html`
+          <div class="device-menu" role="listbox">
+            ${devices.map((d) => {
+              const isActive = d.config_entry_id === this.activeDeviceId;
+              return html`
+                <button
+                  class="device-menu-item ${isActive ? "active" : ""}"
+                  role="option"
+                  aria-selected=${isActive ? "true" : "false"}
+                  @click=${() => this._selectDevice(d.config_entry_id)}
+                >
+                  ${isActive
+                    ? html`<ha-icon icon="mdi:check"></ha-icon>`
+                    : html`<span class="device-menu-spacer"></span>`}
+                  <span class="device-menu-name">${d.name || d.config_entry_id}</span>
+                </button>
+              `;
+            })}
+          </div>
+        ` : ""}
+      </div>
+    `;
+  }
+
+  _toggleDeviceMenu(e) {
+    e.stopPropagation();
+    this._deviceMenuOpen = !this._deviceMenuOpen;
+  }
+
+  _selectDevice(configEntryId) {
+    this._deviceMenuOpen = false;
+    if (configEntryId === this.activeDeviceId) return;
+    this.dispatchEvent(new CustomEvent("volumio-device-change", {
+      detail: { config_entry_id: configEntryId },
+      bubbles: true,
+      composed: true,
+    }));
   }
 
   _renderBreadcrumb() {

@@ -12,6 +12,7 @@ from homeassistant.components import panel_custom
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
@@ -82,8 +83,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await coordinator.async_connect()
     except Exception as err:
-        _LOGGER.error("Failed to connect to Volumio at %s:%s: %s", host, port, err)
-        return False
+        _LOGGER.warning(
+            "Cannot connect to Volumio at %s:%s: %s — will retry", host, port, err
+        )
+        raise ConfigEntryNotReady(
+            f"Cannot connect to Volumio at {host}:{port}"
+        ) from err
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator

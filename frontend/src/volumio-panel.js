@@ -78,6 +78,9 @@ class VolumioPanel extends LitElement {
       // Real browse sources from Volumio
       _browseSources: { type: Array, state: true },
       _activeSourceUri: { type: String, state: true },
+      // Multi-device (issue #38)
+      _devices: { type: Array, state: true },
+      _activeDeviceId: { type: String, state: true },
       // Context menu state
       _ctxOpen: { type: Boolean, state: true },
       _ctxX: { type: Number, state: true },
@@ -576,6 +579,9 @@ class VolumioPanel extends LitElement {
     this._searchTrail = []; // [{title, uri}] — navigation chain from search
     this._browseSources = [];
     this._activeSourceUri = "";
+    // Multi-device (issue #38)
+    this._devices = [];
+    this._activeDeviceId = "";
     // Context menu state
     this._ctxOpen = false;
     this._ctxX = 0;
@@ -602,8 +608,13 @@ class VolumioPanel extends LitElement {
     // Favorites state
     this._favoritesItems = [];
     this._favoritesLoading = false;
-    // History state
-    this._history = JSON.parse(localStorage.getItem("volumio-ws-history") || "[]");
+    // History state — corrupt-data resilient (issue #40)
+    try {
+      const parsed = JSON.parse(localStorage.getItem("volumio-ws-history") || "[]");
+      this._history = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      this._history = [];
+    }
     // Settings state
     this._settingClickAction = localStorage.getItem("volumio-default-click") || "play_now";
     this._settingQueueThumbnails = localStorage.getItem("volumio-queue-thumbnails") !== "false";
@@ -618,6 +629,24 @@ class VolumioPanel extends LitElement {
     // Queue subscription via adapter
     this._adapter.onQueueChange((queue) => {
       this._queue = (queue || []).filter(Boolean);
+    });
+    // Device list / active device updates from adapter (issue #38)
+    this._adapter.onDevicesChange(({ devices, activeId }) => {
+      const previousId = this._activeDeviceId;
+      const nextId = activeId || "";
+      this._devices = devices;
+      this._activeDeviceId = nextId;
+      if (nextId && previousId && previousId !== nextId) {
+        // Switched between devices
+        this._onActiveDeviceSwitched();
+      } else if (nextId && !previousId && this._adapter.ready) {
+        // First device became active on initial load — kick off the
+        // initial source fetch directly rather than waiting for the
+        // next incidental hass change to trip updated().
+        if (this._browseSources.length === 0) {
+          this._fetchBrowseSources();
+        }
+      }
     });
   }
 
@@ -738,12 +767,15 @@ class VolumioPanel extends LitElement {
           .breadcrumb=${[]}
           ?narrow=${this.narrow}
           ?show-back-button=${this._browseStack.length > 0 || this._activeView === "album-detail" || this._activeView === "artist-detail" || this._activeView === "playlist-detail" || !!this._searchQuery}
+          .devices=${this._devices}
+          active-device-id="${this._activeDeviceId}"
           @volumio-navigate=${this._onNavigate}
           @volumio-toggle-nav=${this._onToggleNav}
           @volumio-toggle-queue=${this._onToggleQueue}
           @volumio-back=${this._onBack}
           @volumio-search=${this._onSearch}
           @volumio-search-clear=${this._onSearchClear}
+          @volumio-device-change=${this._onDeviceChange}
         ></volumio-top-bar>
 
         <div class="content-area">
@@ -1275,6 +1307,70 @@ class VolumioPanel extends LitElement {
       this._activeSourceUri = "";
     } else if (this._activeView !== "now-playing") {
       this._activeView = "now-playing";
+    }
+  }
+
+  // ── Multi-device (issue #38) ──────────────────────────────
+
+  async _onDeviceChange(e) {
+    const configEntryId = e?.detail?.config_entry_id;
+    if (!configEntryId) return;
+    if (configEntryId === this._activeDeviceId) return;
+    // Adapter handles unsubscribe/resubscribe and fires onDevicesChange,
+    // which our listener picks up to call _onActiveDeviceSwitched().
+    await this._adapter.setDevice(configEntryId);
+  }
+
+  /**
+   * Reset per-device state when the active Volumio device changes.
+   * UI prefs (nav mode, queue panel visibility, settings) are kept;
+   * everything that reflects what's on the device is cleared so the
+   * panel doesn't show stale data from the previous device.
+   */
+  _onActiveDeviceSwitched() {
+    // Browse / search
+    this._browseStack = [];
+    this._browseItems = [];
+    this._browseLoading = false;
+    this._browseContext = null;
+    this._browseSources = [];
+    this._activeSourceUri = "";
+    this._searchResults = null;
+    this._searchLoading = false;
+    this._searchQuery = "";
+    this._searchTrail = [];
+    // Playlists / favorites views
+    this._playlistItems = [];
+    this._playlistDetailItems = [];
+    this._playlistDetailContext = null;
+    this._playlistLoading = false;
+    this._favoritesItems = [];
+    this._favoritesLoading = false;
+    this._favoritesCache = [];
+    // Now-playing favorite indicator
+    this._isFavorite = false;
+    this._lastUri = null;
+    // Queue UI state
+    this._queue = [];
+    this._queueConfirmClear = false;
+    this._queueSaveOpen = false;
+    this._queueSaveName = "";
+    this._dragIndex = -1;
+    this._dragOverIndex = -1;
+    // Context menu / toast
+    this._ctxOpen = false;
+    this._ctxItems = [];
+    this._ctxTarget = null;
+    this._ctxPlaylists = [];
+    this._toastOpen = false;
+    this._toastMessage = "";
+    this._toastUndo = null;
+    this._toastUndoData = null;
+    // Land on Now Playing for the new device
+    this._activeView = "now-playing";
+    // Re-fetch sources for the new device
+    if (this._adapter.ready) {
+      this._fetchBrowseSources();
     }
   }
 

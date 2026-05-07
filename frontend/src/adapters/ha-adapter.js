@@ -4,16 +4,33 @@
  * All hass object access is isolated here. Components interact with this
  * adapter via a clean interface; they never import or reference hass.
  *
+ * Multi-device model (issue #38):
+ *   On connect the adapter calls volumio_ws/list_devices to learn which
+ *   Volumio config entries exist. Each device record carries its
+ *   config_entry_id, display name, host/port, volumio_url, and the
+ *   media_player entity_id. The adapter persists the user's selection
+ *   in localStorage ("volumio-selected-device") and falls back to the
+ *   first device if none is saved or the saved one is gone.
+ *
+ *   The panel reads the device list via getDevices() and switches
+ *   devices via setDevice(configEntryId). The adapter unsubscribes the
+ *   old queue, applies the new IDs, notifies state and device listeners,
+ *   and re-subscribes the queue.
+ *
  * Usage:
  *   const adapter = new HAAdapter();
- *   adapter.connect({ hass, panel });       // on first load
- *   adapter.updateHass(hass);               // on every hass change
- *   adapter.onStateChange(cb);              // subscribe to state diffs
- *   adapter.onQueueChange(cb);              // subscribe to queue pushes
+ *   adapter.connect({ hass, panel });        // first load — kicks off async device init
+ *   adapter.updateHass(hass);                // every hass change
+ *   adapter.onStateChange(cb);               // state diffs
+ *   adapter.onQueueChange(cb);               // queue pushes
+ *   adapter.onDevicesChange(cb);             // device list / active device changes
  *   const result = await adapter.call("queue_add", { uri: "..." });
- *   await adapter.play();
- *   adapter.disconnect();                   // cleanup
+ *   await adapter.setDevice(configEntryId);  // switch active device
+ *   await adapter.refreshDevices();          // re-pull device list (e.g. after add/remove)
+ *   adapter.disconnect();
  */
+
+const SELECTED_DEVICE_STORAGE_KEY = "volumio-selected-device";
 
 // ── State normalization ───────────────────────────────────
 
@@ -100,12 +117,36 @@ function stateChanged(prev, next) {
   return keys.some((k) => prev[k] !== next[k]);
 }
 
+// ── localStorage helpers (corrupt-data resilient) ─────────
+
+function readSelectedDevice() {
+  try {
+    return localStorage.getItem(SELECTED_DEVICE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeSelectedDevice(configEntryId) {
+  try {
+    if (configEntryId) {
+      localStorage.setItem(SELECTED_DEVICE_STORAGE_KEY, configEntryId);
+    } else {
+      localStorage.removeItem(SELECTED_DEVICE_STORAGE_KEY);
+    }
+  } catch {
+    // Storage full / disabled — silent; selection just won't persist
+  }
+}
+
 // ── Adapter class ─────────────────────────────────────────
 
 export class HAAdapter {
   constructor() {
     this._hass = null;
     this._panel = null;
+    this._devices = [];
+    this._activeDevice = null;
     this._entityId = null;
     this._configEntryId = null;
     this._sensorBase = null;
@@ -113,46 +154,37 @@ export class HAAdapter {
     this._lastState = null;
     this._stateListeners = new Set();
     this._queueListeners = new Set();
+    this._devicesListeners = new Set();
+    this._initInFlight = null;
   }
 
   // ── Lifecycle ──────────────────────────────────────────────
 
   /**
    * Initialize adapter with HA connection and panel config.
-   * Call once when the panel first loads.
+   * Synchronous: stores hass/panel and kicks off async device discovery.
+   * Listeners will fire once devices are loaded.
    */
   connect({ hass, panel }) {
     this._hass = hass;
     this._panel = panel;
-    this._resolveIds();
-    this._subscribeQueue();
+    // Fire-and-forget init; returns a promise stored so refreshDevices can await it
+    this._initInFlight = this._initDevices();
   }
 
   /**
    * Update the hass and (optionally) panel reference. Called on every
    * hass or panel property change. Diffs state and only notifies
    * listeners if something Volumio-related changed.
-   *
-   * Accepts panel because Lit does not guarantee assignment order of
-   * reactive properties — hass may arrive before panel, in which case
-   * connect() captured `panel: undefined` and we'd never resolve
-   * configEntryId without re-passing it on later updates.
    */
   updateHass(hass, panel) {
     this._hass = hass;
     if (panel !== undefined) this._panel = panel;
-    this._resolveIds();
 
     const next = this._normalize();
     if (stateChanged(this._lastState, next)) {
       this._lastState = next;
-      for (const cb of this._stateListeners) {
-        try {
-          cb(next);
-        } catch (err) {
-          console.error("[ha-adapter] State listener error:", err);
-        }
-      }
+      this._fireState(next);
     }
   }
 
@@ -163,6 +195,7 @@ export class HAAdapter {
     this._unsubscribeQueue();
     this._stateListeners.clear();
     this._queueListeners.clear();
+    this._devicesListeners.clear();
   }
 
   // ── State ──────────────────────────────────────────────────
@@ -178,9 +211,11 @@ export class HAAdapter {
 
   /**
    * Get the configured Volumio URL for art resolution.
+   * Comes from the active device's record (per-device URL — critical
+   * for multi-device deployments where each Volumio has its own host).
    */
   getVolumioUrl() {
-    return this._panel?.config?.volumio_url || "";
+    return this._activeDevice?.volumio_url || "";
   }
 
   /**
@@ -204,6 +239,83 @@ export class HAAdapter {
    */
   get entityId() {
     return this._entityId;
+  }
+
+  // ── Devices ───────────────────────────────────────────────
+
+  /**
+   * Get the current device list. Empty until volumio_ws/list_devices
+   * resolves; subscribe via onDevicesChange to be notified.
+   */
+  getDevices() {
+    return this._devices.slice();
+  }
+
+  /**
+   * Get the active device's config_entry_id, or null if none selected.
+   */
+  getActiveDeviceId() {
+    return this._configEntryId;
+  }
+
+  /**
+   * Get the full active device record (for name display, host, etc.).
+   */
+  getActiveDevice() {
+    return this._activeDevice;
+  }
+
+  /**
+   * Switch the active device. Persists the selection, tears down the
+   * old queue subscription, applies the new IDs, and notifies state +
+   * device listeners. Re-subscribes the queue against the new device.
+   */
+  async setDevice(configEntryId) {
+    const device = this._devices.find(
+      (d) => d.config_entry_id === configEntryId
+    );
+    if (!device) {
+      console.warn("[ha-adapter] setDevice: unknown device", configEntryId);
+      return;
+    }
+    if (device.config_entry_id === this._configEntryId) {
+      return; // no-op
+    }
+
+    writeSelectedDevice(device.config_entry_id);
+
+    this._unsubscribeQueue();
+    this._applyDevice(device);
+    // Force the next state notification through even if attributes
+    // happen to match — listeners need to know we switched devices.
+    this._lastState = null;
+    this._fireDevices();
+    const next = this._normalize();
+    this._lastState = next;
+    this._fireState(next);
+    await this._subscribeQueue();
+  }
+
+  /**
+   * Re-fetch the device list (e.g. after a config entry is added or
+   * removed). Preserves the active selection if still present.
+   */
+  async refreshDevices() {
+    const previousId = this._configEntryId;
+    await this._initDevices();
+    // If the active device went away or wasn't subscribed yet, the
+    // _initDevices flow already re-subscribed. Otherwise no-op.
+    if (this._configEntryId !== previousId) {
+      // _initDevices already handled subscription via _applyDevice path
+    }
+  }
+
+  onDevicesChange(callback) {
+    this._devicesListeners.add(callback);
+  }
+
+  offDevicesChange(callback) {
+    this._devicesListeners.delete(callback);
   }
 
   // ── Service Calls ─────────────────────────────────────────
@@ -333,58 +445,97 @@ export class HAAdapter {
     return normalizeState(entity, this._sensorBase, this._hass);
   }
 
-  _resolveIds() {
-    if (this._entityId && this._configEntryId) return;
+  _applyDevice(device) {
+    if (!device) {
+      this._activeDevice = null;
+      this._configEntryId = null;
+      this._entityId = null;
+      this._sensorBase = null;
+      return;
+    }
+    this._activeDevice = device;
+    this._configEntryId = device.config_entry_id;
+    this._entityId = device.entity_id || null;
+    this._sensorBase = device.entity_id
+      ? device.entity_id.replace("media_player.", "")
+      : null;
+  }
 
-    if (!this._entityId && this._hass) {
-      let found = Object.keys(this._hass.states).find(
-        (eid) =>
-          eid.startsWith("media_player.") &&
-          this._hass.states[eid].attributes?.volumio_ws === true
-      );
-      if (!found) {
-        found = Object.keys(this._hass.states).find(
-          (eid) =>
-            eid.startsWith("media_player.") && eid.includes("volumio")
-        );
-      }
-      if (found) {
-        this._entityId = found;
-        this._sensorBase = found.replace("media_player.", "");
+  async _initDevices() {
+    if (!this._hass) return;
+
+    let devices = [];
+    try {
+      const result = await this._hass.connection.sendMessagePromise({
+        type: "volumio_ws/list_devices",
+      });
+      devices = Array.isArray(result?.devices) ? result.devices : [];
+    } catch (err) {
+      console.error("[ha-adapter] list_devices failed:", err);
+      this._devices = [];
+      this._applyDevice(null);
+      this._fireDevices();
+      return;
+    }
+
+    this._devices = devices;
+
+    // Pick active: saved selection if it still exists, else first device.
+    const savedId = readSelectedDevice();
+    let active = devices.find((d) => d.config_entry_id === savedId);
+    if (!active && devices.length > 0) {
+      active = devices[0];
+    }
+
+    // If saved selection is gone, clear it so future loads pick fresh.
+    if (savedId && !devices.some((d) => d.config_entry_id === savedId)) {
+      writeSelectedDevice(null);
+    }
+
+    const previousQueueDeviceId = this._configEntryId;
+    this._applyDevice(active || null);
+
+    // Re-subscribe queue if the active device changed (or this is the
+    // first time we have one).
+    if (this._configEntryId !== previousQueueDeviceId) {
+      this._unsubscribeQueue();
+      if (this._configEntryId) {
+        await this._subscribeQueue();
       }
     }
 
-    if (!this._configEntryId && this._panel?.config?.config_entry_id) {
-      this._configEntryId = this._panel.config.config_entry_id;
-    }
+    // Notify listeners. State first (entity may now resolve), then devices.
+    const next = this._normalize();
+    this._lastState = next;
+    this._fireState(next);
+    this._fireDevices();
   }
 
   async _subscribeQueue() {
-    if (this._queueUnsub || !this._hass) return;
+    if (this._queueUnsub || !this._hass || !this._configEntryId) return;
+    const cei = this._configEntryId;
     try {
       this._queueUnsub = await this._hass.connection.subscribeMessage(
         (msg) => {
           if (msg.queue) {
-            const queue = [...msg.queue];
-            this._notifyQueue(queue);
+            this._notifyQueue([...msg.queue]);
           }
         },
-        { type: "volumio_ws/subscribe_queue" }
+        { type: "volumio_ws/subscribe_queue", config_entry_id: cei }
       );
     } catch (err) {
       console.warn("[ha-adapter] Queue subscription failed:", err);
     }
 
-    // Belt-and-suspenders: also fetch queue via service call
-    if (this._configEntryId) {
-      try {
-        const result = await this.call("queue_get");
-        if (result?.response?.queue) {
-          this._notifyQueue([...result.response.queue]);
-        }
-      } catch {
-        // Silent
+    // Belt-and-suspenders: also fetch queue via service call so the
+    // panel has data immediately even if the push hasn't fired yet.
+    try {
+      const result = await this.call("queue_get");
+      if (result?.response?.queue) {
+        this._notifyQueue([...result.response.queue]);
       }
+    } catch {
+      // Silent
     }
   }
 
@@ -403,6 +554,30 @@ export class HAAdapter {
         cb(queue);
       } catch (err) {
         console.error("[ha-adapter] Queue listener error:", err);
+      }
+    }
+  }
+
+  _fireState(next) {
+    for (const cb of this._stateListeners) {
+      try {
+        cb(next);
+      } catch (err) {
+        console.error("[ha-adapter] State listener error:", err);
+      }
+    }
+  }
+
+  _fireDevices() {
+    const payload = {
+      devices: this._devices.slice(),
+      activeId: this._configEntryId,
+    };
+    for (const cb of this._devicesListeners) {
+      try {
+        cb(payload);
+      } catch (err) {
+        console.error("[ha-adapter] Devices listener error:", err);
       }
     }
   }
