@@ -2329,6 +2329,12 @@ class VolumioPanel extends LitElement {
     if (action === "undo_queue_remove" && this._toastUndoData) {
       const { item, index } = this._toastUndoData;
       try {
+        // Capture the queue length BEFORE queue_add — this is where the
+        // newly added item will land server-side. Reading this._queue.length
+        // AFTER the await races with pushQueue updates landing during the
+        // service call, which can read N+1 instead of N and cause the move
+        // to fail or move the wrong item. (T39 / A6)
+        const insertIndex = this._queue.length;
         await this._callService("queue_add", {
           uri: item.uri,
           title: item.title || item.name || "",
@@ -2337,10 +2343,9 @@ class VolumioPanel extends LitElement {
           album: item.album || "",
           albumart: item.albumart || "",
         });
-        // Try to move it back to original position
-        const newLast = this._queue.length;
-        if (index < newLast) {
-          await this._callService("queue_move", { from_index: newLast, to_index: index });
+        // Move it back to its original position if it isn't already there.
+        if (index < insertIndex) {
+          await this._callService("queue_move", { from_index: insertIndex, to_index: index });
         }
         this._refreshQueue();
       } catch (err) {

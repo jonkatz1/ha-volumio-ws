@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import deque
 from typing import Any, Callable
 
 from homeassistant.core import HomeAssistant, callback
@@ -72,8 +73,13 @@ class VolumioWebSocketCoordinator:
         self._state_listeners: list[Callable[[], None]] = []
         self._queue_listeners: list[Callable[[], None]] = []
 
-        # Response futures for request/reply pattern
-        self._pending_responses: dict[str, asyncio.Future] = {}
+        # Response futures for request/reply pattern.
+        # Multiple concurrent calls with the same response_key are queued
+        # FIFO; pushes are matched to waiting futures in send order. The
+        # browseLibrary key is split into "browseLibrary:search" and
+        # "browseLibrary:browse" buckets, routed by content (see
+        # _on_push_browse_library).
+        self._pending_responses: dict[str, "deque[asyncio.Future]"] = {}
 
         # Register event handlers on transport
         self._register_handlers()
@@ -118,19 +124,15 @@ class VolumioWebSocketCoordinator:
             len(data) if isinstance(data, list) else 0,
         )
         self._queue = data if isinstance(data, list) else []
-        # Resolve pending future if someone is awaiting this
-        future = self._pending_responses.pop("getQueue", None)
-        if future and not future.done():
-            future.set_result(self._queue)
+        # Resolve oldest pending future awaiting getQueue (FIFO)
+        self._resolve_pending("getQueue", self._queue)
         self.hass.loop.call_soon_threadsafe(self._notify_queue_listeners)
 
     def _on_push_playlists(self, data: Any) -> None:
         """Handle pushListPlaylist event."""
         self._playlists = data if isinstance(data, list) else []
-        # Resolve pending future if someone is awaiting this
-        future = self._pending_responses.pop("listPlaylist", None)
-        if future and not future.done():
-            future.set_result(self._playlists)
+        # Resolve oldest pending future awaiting listPlaylist (FIFO)
+        self._resolve_pending("listPlaylist", self._playlists)
 
     def _on_push_browse_sources(self, data: Any) -> None:
         """Handle pushBrowseSources event."""
@@ -140,10 +142,8 @@ class VolumioWebSocketCoordinator:
             len(self._browse_sources),
             [s.get("name") for s in self._browse_sources],
         )
-        # Resolve pending future if someone is awaiting this
-        future = self._pending_responses.pop("getBrowseSources", None)
-        if future and not future.done():
-            future.set_result(self._browse_sources)
+        # Resolve oldest pending future awaiting getBrowseSources (FIFO)
+        self._resolve_pending("getBrowseSources", self._browse_sources)
         self.hass.loop.call_soon_threadsafe(self._notify_state_listeners)
 
     def _on_push_multiroom(self, data: Any) -> None:
@@ -153,16 +153,45 @@ class VolumioWebSocketCoordinator:
         )
 
     def _on_push_browse_library(self, data: Any) -> None:
-        """Handle browse library response for request/reply pattern."""
-        future = self._pending_responses.pop("browseLibrary", None)
-        if future and not future.done():
-            future.set_result(data)
+        """Handle browse library response for request/reply pattern.
+
+        Volumio sends pushBrowseLibrary in response to BOTH browseLibrary
+        and search emits, with no correlation id. Search responses carry
+        navigation.isSearchResult=true; browse responses do not. Route to
+        the matching internal bucket so concurrent browse + search calls
+        do not collide.
+        """
+        nav = data.get("navigation") if isinstance(data, dict) else None
+        is_search = (
+            bool(nav.get("isSearchResult")) if isinstance(nav, dict) else False
+        )
+        key = "browseLibrary:search" if is_search else "browseLibrary:browse"
+        self._resolve_pending(key, data)
 
     def _on_push_method(self, data: Any) -> None:
         """Handle callMethod response."""
-        future = self._pending_responses.pop("callMethod", None)
-        if future and not future.done():
-            future.set_result(data)
+        # Resolve oldest pending future awaiting callMethod (FIFO)
+        self._resolve_pending("callMethod", data)
+
+    def _resolve_pending(self, key: str, value: Any) -> None:
+        """Resolve the oldest pending future for `key` with `value`.
+
+        FIFO ordering: when multiple emit_and_wait calls share a key,
+        responses are matched to waiters in send order. Cancelled or
+        already-resolved futures are skipped (they may sit in the deque
+        between a timeout firing and the timeout handler running). The
+        deque entry is removed once empty so the dict stays bounded.
+        """
+        queue = self._pending_responses.get(key)
+        if not queue:
+            return
+        while queue:
+            future = queue.popleft()
+            if not future.done():
+                future.set_result(value)
+                break
+        if not queue:
+            self._pending_responses.pop(key, None)
 
     # ── Public properties (unchanged) ────────────────────────────────
 
@@ -275,11 +304,17 @@ class VolumioWebSocketCoordinator:
         """Disconnect from Volumio."""
         await self._transport.disconnect()
 
-    # ── Emit methods (unchanged signatures) ───────────────────────────
+    # ── Emit methods (signatures: emit returns bool) ──────────────────
 
-    async def async_emit(self, event: str, data: Any = None) -> None:
-        """Emit an event to Volumio."""
-        await self._transport.emit(event, data)
+    async def async_emit(self, event: str, data: Any = None) -> bool:
+        """Emit an event to Volumio.
+
+        Returns:
+            True if sent, False if the transport is disconnected or the
+            send failed. Mutation methods use this to surface failures to
+            callers rather than silently dropping commands.
+        """
+        return await self._transport.emit(event, data)
 
     async def async_emit_and_wait(
         self,
@@ -288,19 +323,54 @@ class VolumioWebSocketCoordinator:
         response_key: str | None = None,
         timeout: float = 10.0,
     ) -> Any:
-        """Emit an event and wait for the corresponding push response."""
+        """Emit an event and wait for the corresponding push response.
+
+        Multiple concurrent calls sharing a response_key are queued FIFO;
+        push handlers resolve the oldest waiter. Returns None on
+        disconnect, send failure, or timeout — callers should fall back
+        to cached state where appropriate.
+        """
+        # Fail fast if not connected — don't wait the full timeout.
+        if not self._transport.connected:
+            _LOGGER.warning(
+                "Cannot emit %s and wait for %s: not connected",
+                event, response_key or event,
+            )
+            return None
+
         key = response_key or event
         future: asyncio.Future = self.hass.loop.create_future()
-        self._pending_responses[key] = future
+        queue = self._pending_responses.setdefault(key, deque())
+        queue.append(future)
 
-        await self.async_emit(event, data)
+        sent = await self.async_emit(event, data)
+        if not sent:
+            # Transport refused to send — roll back the pending future.
+            self._discard_pending(key, future)
+            return None
 
         try:
             return await asyncio.wait_for(future, timeout=timeout)
         except asyncio.TimeoutError:
-            self._pending_responses.pop(key, None)
+            # Remove THIS future (FIFO order may have other live waiters).
+            self._discard_pending(key, future)
             _LOGGER.warning("Timeout waiting for response to %s", event)
             return None
+
+    def _discard_pending(
+        self, key: str, future: asyncio.Future
+    ) -> None:
+        """Remove a specific pending future (rollback / timeout cleanup)."""
+        queue = self._pending_responses.get(key)
+        if not queue:
+            return
+        try:
+            queue.remove(future)
+        except ValueError:
+            # Already resolved/removed by a push handler; nothing to do.
+            pass
+        if not queue:
+            self._pending_responses.pop(key, None)
 
     # ── High-level methods (unchanged signatures) ─────────────────────
 
@@ -309,7 +379,7 @@ class VolumioWebSocketCoordinator:
         return await self.async_emit_and_wait(
             "browseLibrary",
             {"uri": uri} if uri else None,
-            response_key="browseLibrary",
+            response_key="browseLibrary:browse",
         )
 
     async def async_get_browse_sources(self) -> list[dict[str, Any]]:
@@ -330,11 +400,13 @@ class VolumioWebSocketCoordinator:
 
     async def async_search(self, query: str) -> dict[str, Any] | None:
         """Search the library."""
-        # Search response comes back via browseLibrary push
+        # Search response comes back via pushBrowseLibrary, but is routed
+        # to the :search bucket by content (navigation.isSearchResult=true)
+        # so concurrent browse + search calls do not collide.
         return await self.async_emit_and_wait(
             "search",
             {"value": query},
-            response_key="browseLibrary",
+            response_key="browseLibrary:search",
         )
 
     # ── Queue methods ─────────────────────────────────────────────────
@@ -367,7 +439,9 @@ class VolumioWebSocketCoordinator:
             Acknowledgment dict. Caller should use async_get_queue()
             to get the updated queue.
         """
-        await self.async_emit(WS_ADD_TO_QUEUE, item)
+        sent = await self.async_emit(WS_ADD_TO_QUEUE, item)
+        if not sent:
+            return {"success": False, "command": "addToQueue", "error": "not_connected"}
         return {"success": True, "command": "addToQueue"}
 
     async def async_remove_from_queue(self, index: int) -> dict[str, Any]:
@@ -381,7 +455,9 @@ class VolumioWebSocketCoordinator:
         Returns:
             Acknowledgment dict.
         """
-        await self.async_emit(WS_REMOVE_FROM_QUEUE, {"value": index})
+        sent = await self.async_emit(WS_REMOVE_FROM_QUEUE, {"value": index})
+        if not sent:
+            return {"success": False, "command": "removeFromQueue", "error": "not_connected"}
         return {"success": True, "command": "removeFromQueue"}
 
     async def async_move_queue(
@@ -397,9 +473,11 @@ class VolumioWebSocketCoordinator:
         Returns:
             Acknowledgment dict.
         """
-        await self.async_emit(
+        sent = await self.async_emit(
             WS_MOVE_QUEUE, {"from": from_index, "to": to_index}
         )
+        if not sent:
+            return {"success": False, "command": "moveQueue", "error": "not_connected"}
         return {"success": True, "command": "moveQueue"}
 
     async def async_clear_queue(self) -> dict[str, Any]:
@@ -408,7 +486,9 @@ class VolumioWebSocketCoordinator:
         Returns:
             Acknowledgment dict.
         """
-        await self.async_emit(WS_CLEAR_QUEUE)
+        sent = await self.async_emit(WS_CLEAR_QUEUE)
+        if not sent:
+            return {"success": False, "command": "clearQueue", "error": "not_connected"}
         return {"success": True, "command": "clearQueue"}
 
     async def async_play_index(self, index: int) -> dict[str, Any]:
@@ -420,7 +500,9 @@ class VolumioWebSocketCoordinator:
         Returns:
             Acknowledgment dict.
         """
-        await self.async_emit(WS_PLAY, {"value": index})
+        sent = await self.async_emit(WS_PLAY, {"value": index})
+        if not sent:
+            return {"success": False, "command": "play", "error": "not_connected"}
         return {"success": True, "command": "play"}
 
     async def async_replace_and_play(
@@ -439,7 +521,9 @@ class VolumioWebSocketCoordinator:
         Returns:
             Acknowledgment dict.
         """
-        await self.async_emit(WS_REPLACE_AND_PLAY, item)
+        sent = await self.async_emit(WS_REPLACE_AND_PLAY, item)
+        if not sent:
+            return {"success": False, "command": "replaceAndPlay", "error": "not_connected"}
         return {"success": True, "command": "replaceAndPlay"}
 
     # ── Playlist methods ──────────────────────────────────────────────
@@ -470,7 +554,9 @@ class VolumioWebSocketCoordinator:
         Returns:
             Acknowledgment dict.
         """
-        await self.async_emit(WS_CREATE_PLAYLIST, {"name": name})
+        sent = await self.async_emit(WS_CREATE_PLAYLIST, {"name": name})
+        if not sent:
+            return {"success": False, "command": "createPlaylist", "error": "not_connected"}
         return {"success": True, "command": "createPlaylist"}
 
     async def async_delete_playlist(self, name: str) -> dict[str, Any]:
@@ -482,7 +568,9 @@ class VolumioWebSocketCoordinator:
         Returns:
             Acknowledgment dict.
         """
-        await self.async_emit(WS_DELETE_PLAYLIST, {"name": name})
+        sent = await self.async_emit(WS_DELETE_PLAYLIST, {"name": name})
+        if not sent:
+            return {"success": False, "command": "deletePlaylist", "error": "not_connected"}
         return {"success": True, "command": "deletePlaylist"}
 
     async def async_add_to_playlist(
@@ -502,7 +590,9 @@ class VolumioWebSocketCoordinator:
         payload: dict[str, Any] = {"name": name, "uri": uri}
         if service is not None:
             payload["service"] = service
-        await self.async_emit(WS_ADD_TO_PLAYLIST, payload)
+        sent = await self.async_emit(WS_ADD_TO_PLAYLIST, payload)
+        if not sent:
+            return {"success": False, "command": "addToPlaylist", "error": "not_connected"}
         return {"success": True, "command": "addToPlaylist"}
 
     async def async_remove_from_playlist(
@@ -521,7 +611,9 @@ class VolumioWebSocketCoordinator:
         payload: dict[str, Any] = {"name": name, "uri": uri}
         if service is not None:
             payload["service"] = service
-        await self.async_emit(WS_REMOVE_FROM_PLAYLIST, payload)
+        sent = await self.async_emit(WS_REMOVE_FROM_PLAYLIST, payload)
+        if not sent:
+            return {"success": False, "command": "removeFromPlaylist", "error": "not_connected"}
         return {"success": True, "command": "removeFromPlaylist"}
 
     async def async_play_playlist(self, name: str) -> dict[str, Any]:
@@ -533,7 +625,9 @@ class VolumioWebSocketCoordinator:
         Returns:
             Acknowledgment dict.
         """
-        await self.async_emit(WS_PLAY_PLAYLIST, {"name": name})
+        sent = await self.async_emit(WS_PLAY_PLAYLIST, {"name": name})
+        if not sent:
+            return {"success": False, "command": "playPlaylist", "error": "not_connected"}
         return {"success": True, "command": "playPlaylist"}
 
     async def async_enqueue_playlist(self, name: str) -> dict[str, Any]:
@@ -545,7 +639,9 @@ class VolumioWebSocketCoordinator:
         Returns:
             Acknowledgment dict.
         """
-        await self.async_emit(WS_ENQUEUE, {"name": name})
+        sent = await self.async_emit(WS_ENQUEUE, {"name": name})
+        if not sent:
+            return {"success": False, "command": "enqueue", "error": "not_connected"}
         return {"success": True, "command": "enqueue"}
 
     async def async_save_queue_to_playlist(self, name: str) -> dict[str, Any]:
@@ -560,7 +656,9 @@ class VolumioWebSocketCoordinator:
         Returns:
             Acknowledgment dict.
         """
-        await self.async_emit(WS_SAVE_QUEUE_TO_PLAYLIST, {"name": name})
+        sent = await self.async_emit(WS_SAVE_QUEUE_TO_PLAYLIST, {"name": name})
+        if not sent:
+            return {"success": False, "command": "saveQueueToPlaylist", "error": "not_connected"}
         return {"success": True, "command": "saveQueueToPlaylist"}
 
     # ── Favorites methods ─────────────────────────────────────────────
@@ -595,7 +693,9 @@ class VolumioWebSocketCoordinator:
             Acknowledgment dict.
         """
         _LOGGER.debug("async_add_to_favourites called with: %s", item)
-        await self.async_emit(WS_ADD_TO_FAVOURITES, item)
+        sent = await self.async_emit(WS_ADD_TO_FAVOURITES, item)
+        if not sent:
+            return {"success": False, "command": "addToFavourites", "error": "not_connected"}
         return {"success": True, "command": "addToFavourites"}
 
     async def async_remove_from_favourites(
@@ -611,5 +711,7 @@ class VolumioWebSocketCoordinator:
             Acknowledgment dict.
         """
         _LOGGER.debug("async_remove_from_favourites called with: %s", item)
-        await self.async_emit(WS_REMOVE_FROM_FAVOURITES, item)
+        sent = await self.async_emit(WS_REMOVE_FROM_FAVOURITES, item)
+        if not sent:
+            return {"success": False, "command": "removeFromFavourites", "error": "not_connected"}
         return {"success": True, "command": "removeFromFavourites"}

@@ -391,14 +391,19 @@ class EIO3Transport:
 
     # ── Emitting events ──────────────────────────────────────────────
 
-    async def emit(self, event: str, data: Any = None) -> None:
+    async def emit(self, event: str, data: Any = None) -> bool:
         """Send a Socket.IO event to Volumio.
 
         Formats as: 42["eventName"] or 42["eventName", data]
+
+        Returns:
+            True if the event was sent successfully, False if the transport
+            is disconnected or the underlying send failed. Callers can use
+            this to surface failures rather than silently dropping commands.
         """
         if not self._ws or self._ws.closed or not self._connected:
             _LOGGER.warning("Cannot emit '%s': not connected", event)
-            return
+            return False
 
         if data is not None:
             payload = json.dumps([event, data])
@@ -410,8 +415,10 @@ class EIO3Transport:
         try:
             await self._ws.send_str(msg)
             _LOGGER.debug("Emitted: %s", event)
+            return True
         except Exception as err:
             _LOGGER.warning("Failed to emit '%s': %s", event, err)
+            return False
 
     # ── Reconnection ─────────────────────────────────────────────────
 

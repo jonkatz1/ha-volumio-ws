@@ -1,0 +1,62 @@
+{
+  "navigation": {
+    "lists": [
+      {
+        "availableListViews": [
+          "list"
+        ],
+        "items": [
+          {
+            "service": "mpd",
+            "type": "playlist",
+            "title": "2001",
+            "icon": "fa fa-list-ol",
+            "uri": "playlists/2001"
+          },
+          {
+            "service": "mpd",
+            "type": "playlist",
+            "title": "2006 Electro",
+            "icon": "fa fa-list-ol",
+            "uri": "playlists/2006 Electro"
+          },
+          {
+            "service": "mpd",
+            "type": "playlist",
+            "title": "DL queue",
+            "icon": "fa fa-list-ol",
+            "uri": "playlists/DL queue"
+          },
+          {
+            "service": "mpd",
+            "type": "playlist",
+            "title": "JK - speaker test",
+            "icon": "fa fa-list-ol",
+            "uri": "playlists/JK - speaker test"
+          },
+          {
+            "service": "mpd",
+            "type": "playlist",
+            "title": "Test Playlist",
+            "icon": "fa fa-list-ol",
+            "uri": "playlists/Test Playlist"
+          },
+          {
+            "service": "mpd",
+            "type": "playlist",
+            "title": "test 2",
+            "icon": "fa fa-list-ol",
+            "uri": "playlists/test 2"
+          },
+          {
+            "service": "mpd",
+            "type": "playlist",
+            "title": "test queue",
+            "icon": "fa fa-list-ol",
+            "uri": "playlists/test queue"
+          }
+        ]
+      }
+    ]
+  }
+}
