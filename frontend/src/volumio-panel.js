@@ -70,6 +70,11 @@ class VolumioPanel extends LitElement {
       _browseItems: { type: Array, state: true },
       _browseLoading: { type: Boolean, state: true },
       _browseContext: { type: Object, state: true },
+      _artistBio: { type: String, state: true },
+      _similarArtists: { type: Array, state: true },
+      _albumStory: { type: String, state: true },
+      _albumCredits: { type: Array, state: true },
+      _metadataLoading: { type: Object, state: true },
       // Search state
       _searchResults: { type: Object, state: true },
       _searchLoading: { type: Boolean, state: true },
@@ -572,6 +577,14 @@ class VolumioPanel extends LitElement {
     this._browseItems = [];
     this._browseLoading = false;
     this._browseContext = null; // metadata context for album/artist detail
+    // Metadata state (artist bio, similar artists, album story, credits)
+    this._artistBio = null;
+    this._similarArtists = [];
+    this._albumStory = null;
+    this._albumCredits = [];
+    this._metadataLoading = { bio: false, similar: false, story: false, credits: false };
+    this._metadataArtistKey = null;
+    this._metadataAlbumKey = null;
     // Search state
     this._searchResults = null;
     this._searchLoading = false;
@@ -1053,10 +1066,15 @@ class VolumioPanel extends LitElement {
         ?loading=${this._browseLoading}
         current-uri="${s.uri}"
         volumio-url="${volumioUrl}"
+        .story=${this._albumStory}
+        .credits=${this._albumCredits}
+        ?story-loading=${this._metadataLoading.story}
+        ?credits-loading=${this._metadataLoading.credits}
         @volumio-track-click=${this._onTrackPlay}
         @volumio-album-play=${this._onAlbumPlay}
         @volumio-album-add-queue=${this._onAlbumAddQueue}
         @volumio-navigate=${this._onNavigate}
+        @volumio-similar-artist-click=${this._onSimilarArtistClick}
       ></volumio-album-detail>
     `;
   }
@@ -1069,8 +1087,13 @@ class VolumioPanel extends LitElement {
         .items=${this._browseItems}
         ?loading=${this._browseLoading}
         volumio-url="${volumioUrl}"
+        .bio=${this._artistBio}
+        .similarArtists=${this._similarArtists}
+        ?bio-loading=${this._metadataLoading.bio}
+        ?similar-loading=${this._metadataLoading.similar}
         @volumio-card-click=${this._onBrowseItemClick}
         @volumio-card-play=${this._onBrowseItemPlay}
+        @volumio-similar-artist-click=${this._onSimilarArtistClick}
       ></volumio-artist-detail>
     `;
   }
@@ -1194,42 +1217,44 @@ class VolumioPanel extends LitElement {
         break;
 
       case "album-detail":
-        this._activeView = "album-detail";
-        this._showNavFlyout = false;
         if (album) {
           const currentState = this._adapter.getState();
           const service = currentState.source || "";
           const albumArtist = currentState.artist || "";
-          this._browseContext = {
+          this._enterAlbumDetail({
             title: album,
             artist: albumArtist,
             albumart: currentState.rawAlbumart || "",
             uri: "",
             service,
-          };
-          this._browseItems = [];
-          this._browseLoading = true;
-          this._searchTrail = [
-            { title: "Now Playing", uri: "__now_playing__", view: "now-playing" },
-            { title: album, uri: "", view: "album-detail" },
-          ];
-          this._resolveAndBrowseAlbum(album, albumArtist, service);
+            searchTrail: [
+              { title: "Now Playing", uri: "__now_playing__", view: "now-playing" },
+              { title: album, uri: "", view: "album-detail" },
+            ],
+          });
+        } else {
+          this._activeView = "album-detail";
+          this._showNavFlyout = false;
         }
         break;
 
       case "artist-detail":
-        this._activeView = "artist-detail";
-        this._showNavFlyout = false;
         if (artist) {
           const currentState = this._adapter.getState();
           const service = currentState.source || "";
           const artistUri = `globalUriArtist/${artist}`;
-          this._browseContext = { artist, title: artist, uri: artistUri, service };
-          this._searchTrail = [
-            { title: "Now Playing", uri: "__now_playing__", view: "now-playing" },
-            { title: artist, uri: artistUri, view: "artist-detail", service },
-          ];
-          this._browseToArtist(artistUri, artist, service);
+          this._enterArtistDetail({
+            artist,
+            uri: artistUri,
+            service,
+            searchTrail: [
+              { title: "Now Playing", uri: "__now_playing__", view: "now-playing" },
+              { title: artist, uri: artistUri, view: "artist-detail", service },
+            ],
+          });
+        } else {
+          this._activeView = "artist-detail";
+          this._showNavFlyout = false;
         }
         break;
 
@@ -1291,6 +1316,26 @@ class VolumioPanel extends LitElement {
           this._activeView = "artist-detail";
           this._browseContext = prev;
           this._browseToArtist(prev.uri, prev.title, prev.service || "");
+        } else if (prev.view === "album-detail") {
+          // Restore the album. The trail entry doesn't carry the album's
+          // artist or albumart — we'd need them for _enterAlbumDetail's
+          // metadata fetch. _loadBrowseItems will repopulate _browseContext
+          // (including artist) when the browse response info.type is
+          // "album", and EDIT 12's _fetchAlbumMetadata call there will then
+          // fire with the correct artist+title. For the brief moment before
+          // that resolves, set a minimal _browseContext so the album-detail
+          // view doesn't render with the previous album's header.
+          this._activeView = "album-detail";
+          this._browseContext = {
+            title: prev.title || "",
+            artist: "",
+            albumart: "",
+            uri: prev.uri || "",
+            service: prev.service || "",
+          };
+          if (prev.uri) {
+            this._loadBrowseItems(prev.uri);
+          }
         } else if (prev.view === "now-playing") {
           this._activeView = "now-playing";
           this._searchTrail = [];
@@ -1363,6 +1408,15 @@ class VolumioPanel extends LitElement {
     this._browseItems = [];
     this._browseLoading = false;
     this._browseContext = null;
+    // Metadata (bio/similar/story/credits) — clear so stale device-A
+    // data doesn't flash when switching to device B.
+    this._artistBio = null;
+    this._similarArtists = [];
+    this._albumStory = null;
+    this._albumCredits = [];
+    this._metadataLoading = { bio: false, similar: false, story: false, credits: false };
+    this._metadataArtistKey = null;
+    this._metadataAlbumKey = null;
     this._browseSources = [];
     this._activeSourceUri = "";
     this._searchResults = null;
@@ -1490,6 +1544,141 @@ class VolumioPanel extends LitElement {
    * Search Volumio to find a source-specific artist URI.
    * Returns the URI if an exact match is found, null otherwise.
    */
+  async _fetchArtistMetadata(artistName) {
+    if (!artistName) {
+      this._artistBio = null;
+      this._similarArtists = [];
+      this._metadataArtistKey = null;
+      return;
+    }
+    // Same-target guard — avoids redundant REST calls on Back, breadcrumb
+    // clicks on the current view, and same-album _loadBrowseItems re-fires.
+    if (this._metadataArtistKey === artistName) return;
+    this._metadataArtistKey = artistName;
+    this._artistBio = null;
+    this._similarArtists = [];
+    this._metadataLoading = { ...this._metadataLoading, bio: true, similar: true };
+    const [bio, similar] = await Promise.allSettled([
+      this._adapter.fetchArtistBio(artistName),
+      this._adapter.fetchSimilarArtists(artistName),
+    ]);
+    this._artistBio = bio.status === "fulfilled" ? bio.value : null;
+    this._similarArtists = similar.status === "fulfilled" ? similar.value : [];
+    this._metadataLoading = { ...this._metadataLoading, bio: false, similar: false };
+  }
+
+  async _fetchAlbumMetadata(artistName, albumName) {
+    if (!artistName || !albumName) {
+      this._albumStory = null;
+      this._albumCredits = [];
+      this._metadataAlbumKey = null;
+      return;
+    }
+    // Null byte separator (via fromCharCode to avoid escape-mangling on edit).
+    const SEP = String.fromCharCode(0);
+    const key = artistName + SEP + albumName;
+    // Same-target guard — avoids redundant REST calls on Back, breadcrumb
+    // clicks on the current view, and _loadBrowseItems re-fires on the
+    // same album.
+    if (this._metadataAlbumKey === key) return;
+    this._metadataAlbumKey = key;
+    this._albumStory = null;
+    this._albumCredits = [];
+    this._metadataLoading = { ...this._metadataLoading, story: true, credits: true };
+    const [story, credits] = await Promise.allSettled([
+      this._adapter.fetchAlbumStory(artistName, albumName),
+      this._adapter.fetchAlbumCredits(artistName, albumName),
+    ]);
+    this._albumStory = story.status === "fulfilled" ? story.value : null;
+    this._albumCredits = credits.status === "fulfilled" ? credits.value : [];
+    this._metadataLoading = { ...this._metadataLoading, story: false, credits: false };
+  }
+
+  /**
+   * Single source of truth for entering artist-detail view.
+   * Sets activeView, browseContext, searchTrail (if provided), kicks off
+   * metadata fetch in parallel with the existing browse.
+   */
+  _enterArtistDetail({ artist, uri, service, searchTrail }) {
+    this._activeView = "artist-detail";
+    this._showNavFlyout = false;
+    this._browseContext = {
+      title: artist,
+      artist: artist,
+      uri: uri,
+      service: service || "",
+    };
+    if (searchTrail !== undefined) {
+      this._searchTrail = searchTrail;
+    }
+    this._fetchArtistMetadata(artist);
+    this._browseToArtist(uri, artist, service || "");
+  }
+
+  /**
+   * Single source of truth for entering album-detail view.
+   * skipLoad: when true, no _loadBrowseItems / _resolveAndBrowseAlbum is
+   *   triggered — caller is responsible (used for context-menu go_to_album
+   *   when no URI can be constructed).
+   */
+  _enterAlbumDetail({ title, artist, albumart, uri, service, searchTrail, skipLoad }) {
+    this._activeView = "album-detail";
+    this._showNavFlyout = false;
+    this._browseContext = {
+      title: title,
+      artist: artist || "",
+      albumart: albumart || "",
+      uri: uri || "",
+      service: service || "",
+    };
+    this._browseItems = [];
+    if (searchTrail !== undefined) {
+      this._searchTrail = searchTrail;
+    }
+    this._fetchAlbumMetadata(artist || "", title);
+    if (skipLoad) return;
+    if (uri) {
+      this._loadBrowseItems(uri);
+    } else if (artist) {
+      this._browseLoading = true;
+      this._resolveAndBrowseAlbum(title, artist, service || "");
+    }
+  }
+
+  /**
+   * Click handler for similar-artist tiles AND for clickable credit names
+   * (both dispatch the same volumio-similar-artist-click event).
+   * Routes to _enterArtistDetail using the service from the current
+   * browse context (similar artists and credits inherit context from
+   * the album/artist view they were clicked from).
+   */
+  _onSimilarArtistClick(e) {
+    const { artist, uri } = e.detail || {};
+    if (!artist || !uri) return;
+    const service = this._browseContext?.service || "";
+    // Similar-artist and credit-name clicks are FORWARD navigations —
+    // always push onto the trail so Back returns to the previous view.
+    // If no trail exists yet (e.g. came from Now Playing → artist
+    // without going through search), seed it with the current view
+    // before pushing the new artist so Back has somewhere to return to.
+    let trail = this._searchTrail.slice();
+    if (trail.length === 0) {
+      // No prior trail — seed from current browse context.
+      const ctx = this._browseContext || {};
+      const currentView = this._activeView;
+      if (currentView === "artist-detail" || currentView === "album-detail") {
+        trail.push({
+          title: ctx.title || ctx.artist || "",
+          uri: ctx.uri || "",
+          view: currentView,
+          service: ctx.service || "",
+        });
+      }
+    }
+    trail.push({ title: artist, uri, view: "artist-detail", service });
+    this._enterArtistDetail({ artist, uri, service, searchTrail: trail });
+  }
+
   async _resolveArtistUri(artistName, service) {
     try {
       const result = await this._callService("search", { query: artistName });
@@ -1656,14 +1845,19 @@ class VolumioPanel extends LitElement {
         // component renders <img src="${albumArt}"> directly — for raw
         // /albumart?... paths we must produce an absolute URL.
         const volumioUrl = this._adapter.getVolumioUrl();
+        const albumTitle = info.title || info.album || "";
+        const albumArtist = info.artist || "";
         this._browseContext = {
-          title: info.title || info.album || "",
-          artist: info.artist || "",
+          title: albumTitle,
+          artist: albumArtist,
           albumart: resolveArt(info.albumart || "", volumioUrl),
           uri: info.uri || uri,
           service: info.service || "",
         };
         this._activeView = "album-detail";
+        // Fire metadata fetch (no-op if same album is already loaded
+        // thanks to _metadataAlbumKey guard).
+        this._fetchAlbumMetadata(albumArtist, albumTitle);
       }
     } catch (err) {
       console.error("[volumio-panel] Browse failed:", err);
@@ -1899,34 +2093,32 @@ class VolumioPanel extends LitElement {
 
     // Album type → album detail view
     if (type === "album") {
-      // Build search trail if coming from search or already in search-originated navigation
+      let trail;
       if (this._searchQuery || this._searchTrail.length > 0) {
-        const trail = this._searchTrail.length > 0
+        trail = this._searchTrail.length > 0
           ? [...this._searchTrail]
           : [{ title: `Search "${this._searchQuery}"`, uri: "__search__", view: "search" }];
-        // Add source segment if this is the first item after search and has a service
         if (trail.length === 1 && item.service) {
           trail.push({ title: serviceLabel(item.service), uri: "__source__", view: "source" });
         }
         trail.push({ title: item.title, uri: item.uri, view: "album-detail", service: item.service || "" });
-        this._searchTrail = trail;
       }
-      this._browseContext = {
+      this._enterAlbumDetail({
         title: item.title,
         artist: item.artist || "",
         albumart: item.albumart || "",
         uri: item.uri,
         service: item.service || "",
-      };
-      this._activeView = "album-detail";
-      this._loadBrowseItems(item.uri);
+        searchTrail: trail,
+      });
       return;
     }
 
     // Artist type → artist detail view
     if (type === "artist") {
+      let trail;
       if (this._searchQuery || this._searchTrail.length > 0) {
-        const trail = this._searchTrail.length > 0
+        trail = this._searchTrail.length > 0
           ? [...this._searchTrail]
           : [{ title: `Search "${this._searchQuery}"`, uri: "__search__", view: "search" }];
         // Add source segment if this is the first item after search and has a service
@@ -1934,16 +2126,13 @@ class VolumioPanel extends LitElement {
           trail.push({ title: serviceLabel(item.service), uri: "__source__", view: "source" });
         }
         trail.push({ title: item.title, uri: item.uri, view: "artist-detail", service: item.service || "" });
-        this._searchTrail = trail;
       }
-      this._browseContext = {
-        title: item.title,
+      this._enterArtistDetail({
         artist: item.title || "",
         uri: item.uri,
         service: item.service || "",
-      };
-      this._activeView = "artist-detail";
-      this._browseToArtist(item.uri, item.title, item.service || "");
+        searchTrail: trail,
+      });
       return;
     }
 
@@ -2435,18 +2624,14 @@ class VolumioPanel extends LitElement {
             if (item.service === "mpd" && item.artist && item.album) {
               albumUri = `albums://${encodeURIComponent(item.artist)}/${encodeURIComponent(item.album)}`;
             }
-            this._browseContext = {
+            this._enterAlbumDetail({
               title: item.album || item.title,
               artist: item.artist || "",
               albumart: item.albumart || "",
               uri: albumUri,
               service: item.service || "",
-            };
-            this._browseItems = [];
-            this._activeView = "album-detail";
-            if (albumUri) {
-              this._loadBrowseItems(albumUri);
-            }
+              skipLoad: !albumUri,
+            });
           }
           break;
 
@@ -2454,20 +2639,17 @@ class VolumioPanel extends LitElement {
           if (item.artist) {
             const goService = item.service || "";
             const artistUri = `globalUriArtist/${item.artist}`;
-            this._browseContext = {
-              title: item.artist,
+            const originView = this._activeView;
+            const originTitle = originView === "now-playing" ? "Now Playing" : "Browse";
+            this._enterArtistDetail({
               artist: item.artist,
               uri: artistUri,
               service: goService,
-            };
-            const originView = this._activeView;
-            const originTitle = originView === "now-playing" ? "Now Playing" : "Browse";
-            this._searchTrail = [
-              { title: originTitle, uri: "__origin__", view: originView === "now-playing" ? "now-playing" : "browse" },
-              { title: item.artist, uri: artistUri, view: "artist-detail", service: goService },
-            ];
-            this._activeView = "artist-detail";
-            this._browseToArtist(artistUri, item.artist, goService);
+              searchTrail: [
+                { title: originTitle, uri: "__origin__", view: originView === "now-playing" ? "now-playing" : "browse" },
+                { title: item.artist, uri: artistUri, view: "artist-detail", service: goService },
+              ],
+            });
           }
           break;
 
@@ -2619,14 +2801,24 @@ class VolumioPanel extends LitElement {
       this._activeView = "browse";
       this._searchTrail = [];
     } else if (seg.view === "artist-detail") {
-      this._searchTrail = this._searchTrail.slice(0, index + 1);
-      this._browseContext = { title: seg.title, artist: seg.title, uri: seg.uri, service: seg.service || "" };
-      this._activeView = "artist-detail";
-      this._browseToArtist(seg.uri, seg.title, seg.service || "");
+      this._enterArtistDetail({
+        artist: seg.title,
+        uri: seg.uri,
+        service: seg.service || "",
+        searchTrail: this._searchTrail.slice(0, index + 1),
+      });
     } else if (seg.view === "album-detail") {
-      this._searchTrail = this._searchTrail.slice(0, index + 1);
-      this._activeView = "album-detail";
-      this._loadBrowseItems(seg.uri);
+      // Breadcrumb doesn't carry the album's artist — read from the
+      // current _browseContext which is still set to this album.
+      const ctxArtist = this._browseContext?.artist || "";
+      this._enterAlbumDetail({
+        title: seg.title,
+        artist: ctxArtist,
+        albumart: this._browseContext?.albumart || "",
+        uri: seg.uri,
+        service: seg.service || "",
+        searchTrail: this._searchTrail.slice(0, index + 1),
+      });
     }
   }
 

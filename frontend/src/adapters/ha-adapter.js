@@ -437,6 +437,106 @@ export class HAAdapter {
     this._stateListeners.delete(callback);
   }
 
+  // ── Plugin endpoint REST ──────────────────────────────────
+
+  /**
+   * Low-level helper for Volumio's POST /api/v1/pluginEndpoint gateway.
+   * Returns the inner `data` field on success, or null on any failure
+   * (including network errors, non-OK HTTP, and outer success:false).
+   * Never throws to caller.
+   * @private
+   */
+  async _fetchPluginEndpoint(endpoint, data) {
+    const url = this.getVolumioUrl();
+    if (!url) return null;
+    try {
+      const response = await fetch(`${url}/api/v1/pluginEndpoint`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint, data }),
+      });
+      if (!response.ok) return null;
+      const result = await response.json();
+      // Outer envelope: getSimilarArtists returns {success:false, error:...}
+      // on failure; storyArtist/storyAlbum return {success:true, data:{...}}
+      // with the inner success flag carrying the real status.
+      if (!result || result.success === false) return null;
+      return result.data;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Fetch artist biography text via metavolumio.storyArtist.
+   * @param {string} artistName
+   * @returns {Promise<string|null>} Bio text, or null if unavailable.
+   */
+  async fetchArtistBio(artistName) {
+    if (!artistName) return null;
+    const data = await this._fetchPluginEndpoint("metavolumio", {
+      mode: "storyArtist",
+      artist: artistName,
+    });
+    // Inner envelope: storyArtist returns {success:false, error:"not found"}
+    // wrapped in the outer {success:true, data:...}. Check both.
+    if (!data || data.success === false || !data.value) return null;
+    return typeof data.value === "string" ? data.value : null;
+  }
+
+  /**
+   * Fetch similar artists via getSimilarArtists.
+   * @param {string} artistName
+   * @returns {Promise<Array<{artist:string, albumart:string, uri:string}>>}
+   *   Array of similar artist records, or empty array if unavailable.
+   */
+  async fetchSimilarArtists(artistName) {
+    if (!artistName) return [];
+    const data = await this._fetchPluginEndpoint("getSimilarArtists", {
+      artist: artistName,
+    });
+    return Array.isArray(data) ? data : [];
+  }
+
+  /**
+   * Fetch album story text via metavolumio.storyAlbum.
+   * @param {string} artistName
+   * @param {string} albumName
+   * @returns {Promise<string|null>} Story text, or null if unavailable.
+   */
+  async fetchAlbumStory(artistName, albumName) {
+    if (!artistName || !albumName) return null;
+    const data = await this._fetchPluginEndpoint("metavolumio", {
+      mode: "storyAlbum",
+      artist: artistName,
+      album: albumName,
+    });
+    if (!data || data.success === false || !data.value) return null;
+    return typeof data.value === "string" ? data.value : null;
+  }
+
+  /**
+   * Fetch album credits via metavolumio.creditsAlbum.
+   * Returns an array of {key, values:[{name, uri}]} where key is the role
+   * (e.g. "lead vocals") and values are the credited people/places.
+   * URIs are MusicBrainz IDs (mbid:/artist/...), NOT Volumio URIs — they
+   * are display-only here; cross-navigation uses the name with the
+   * globalUriArtist/Name fallback path.
+   * @param {string} artistName
+   * @param {string} albumName
+   * @returns {Promise<Array<{key:string, values:Array<{name:string, uri:string}>}>>}
+   */
+  async fetchAlbumCredits(artistName, albumName) {
+    if (!artistName || !albumName) return [];
+    const data = await this._fetchPluginEndpoint("metavolumio", {
+      mode: "creditsAlbum",
+      artist: artistName,
+      album: albumName,
+    });
+    if (!data || data.success === false || !Array.isArray(data.value)) return [];
+    return data.value;
+  }
+
   // ── Internals ─────────────────────────────────────────────
 
   _normalize() {

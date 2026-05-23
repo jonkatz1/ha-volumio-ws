@@ -32,6 +32,7 @@ Rule: each layer calls only the layer directly below. Coordinator methods MUST r
 | T20 — Playlists, favorites, history, settings, quality fix | DONE | Commit 5e6c3b7 on feat/T20-views-settings (merged to main). 5 new components, inferTrackQuality fix for service-name trackType. v0.1.43 deployed. |
 | #38 — Multi-device panel | DONE | Commit <HASH> on fix/38-multi-device-panel (awaiting review). New WS commands volumio_ws/list_devices and config_entry_id-routed subscribe_queue. Adapter resolves entity via list_devices (no string matching). Top-bar device selector (icon-only, far right, hidden when single-device). A3 ConfigEntryNotReady on connect failure. A7 localStorage JSON.parse guards on history + recent searches. |
 | T42 — Pre-release bug fixes | DONE | Commit 0fb6a7f on fix/T42-art-artist-nav. Fix album art 401s after HA restart (raw albumart in extra_state_attributes, store raw paths in history). Fix artist navigation blank pages (remove encodeURIComponent, search-based artist/album URI resolution). Album navigation from Now Playing. |
+| T43 — Artist bio + similar + album story + credits | DONE | Branch feat/T43-artist-detail. Direct browser fetch to Volumio's `POST /api/v1/pluginEndpoint` (CORS-confirmed, no backend proxy needed). 5 new adapter methods (`fetchArtistBio`, `fetchSimilarArtists`, `fetchAlbumStory`, `fetchAlbumCredits`, `_fetchPluginEndpoint` helper). Panel refactor: 8 call-sites centralized through `_enterArtistDetail` / `_enterAlbumDetail` helpers. Same-target guards via `_metadataArtistKey` / `_metadataAlbumKey` keys prevent redundant REST on Back/breadcrumb. Credit names clickable → `globalUriArtist/Name` fallback, same path as similar artists. Bio/story 200-word Read more; credits 6-row Show all expansion. Graceful hide on no data. Two post-deploy fixes: similar-artist push-not-replace trail; `_onBack` album-detail restoration branch. Manifest 0.1.63. |
 
 Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-initiated PING (`2`) every 23s, server responds PONG (`3`) within 5s. Reconnection with exponential backoff (5s → 60s cap). No external dependencies — aiohttp is HA-native.
 
@@ -83,12 +84,13 @@ Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-init
 - `components/browse-list.js` — list/grid view with toggle (localStorage), compact mode, alpha jump index, load-more pagination.
 - `components/album-card.js` — reusable album grid card (180px). Hover: play + add-to-queue overlay.
 - `components/track-card.js` — reusable track list row (48px). Compact mode. Add-to-queue button. Playing state.
-- `components/album-detail.js` — album header + track listing. Play and Add to Queue buttons.
-- `components/artist-detail.js` — artist albums grid, placeholder bio/similar sections.
+- `components/album-detail.js` — album header + track listing, Play / Add to Queue, About this album (story with Read more), Credits (role → clickable name rows, Show all expansion). Story + credits hidden when no data. Credit name click dispatches `volumio-similar-artist-click` (same event as similar-artist tiles) → resolves to `globalUriArtist/Name`.
+- `components/artist-detail.js` — artist albums grid, About (bio with Read more), Similar Artists (round-art card grid). Both sections hidden when no data. Similar-artist click dispatches `volumio-similar-artist-click`.
 - `utils/format-utils.js` — `resolveArt(albumart, volumioUrl)` — resolves raw Volumio albumart paths to full URLs. Handles relative `/albumart?...` paths, absolute CDN URLs, and empty values.
 - `components/search-results.js` — grouped by source then type, collapsible, show-all expansion.
 - `utils/quality-utils.js` — 5-tier detection (hires / lossless / high / basic / stream / unknown). Treats Volumio service names (`qobuz`, `tidal`, …) as unknown codec and infers tier from bitdepth/samplerate.
 - `styles/shared-styles.js` — design tokens, focus ring, reduced-motion handling. Theme-aware via HA CSS vars.
+- `adapters/ha-adapter.js` — abstracts all HA communication (WS service calls, queue subscriptions, list_devices, multi-device active-device tracking). Plugin endpoint REST methods added in T43: `fetchArtistBio`, `fetchSimilarArtists`, `fetchAlbumStory`, `fetchAlbumCredits` — direct browser POST to `http://<volumio>:3000/api/v1/pluginEndpoint`, CORS works, never throws to caller (returns null/[] on any error).
 
 ## Key Conventions
 - Branches: `feat/T{N}-description`
@@ -124,12 +126,19 @@ Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-init
 - Volumio WebSocket URIs use literal strings, not URL encoding. `globalUriArtist/Peter Gabriel` works; `globalUriArtist/Peter%20Gabriel` returns empty. This is a JSON payload over WebSocket, not an HTTP URL.
 - Volumio search results never use `type: "artist"`. Artist items are `type: "folder"` (mpd) or `type: "folder-with-favourites"` (Qobuz/TIDAL). Match artist lists by list title containing "Artist" + service name, not item type.
 - HA `entity_picture` is a proxied URL with session-bound auth tokens. Never persist it to localStorage — tokens expire on HA restart. Store the raw source URL and resolve at render time.
+- Volumio's `/api/v1/pluginEndpoint` returns Access-Control-Allow-Origin headers for both GET and POST — direct browser fetch from the HA panel origin works without backend proxy. Response envelope is double-wrapped: outer `{success, data}` plus inner `data.success` for `metavolumio` endpoints. Both layers must be checked.
+- `getSimilarArtists` and `metavolumio` (storyArtist/storyAlbum/creditsAlbum) return inconsistent error shapes: outer `{success:false, error:...}` vs outer `{success:true, data:{success:false, error:"not found"}}`. The shared `_fetchPluginEndpoint` helper handles the outer envelope; each specific fetch method handles its own inner envelope.
+- `metavolumio.creditsAlbum` value is structured: `[{key:"role", values:[{name, uri}]}]`. URIs are MusicBrainz IDs (`mbid:/artist/...`), NOT Volumio URIs — for cross-navigation use the name with the `globalUriArtist/Name` fallback path.
+- `_onBack` only handled `artist-detail` and `now-playing` trail restoration; an `album-detail` trail entry fell through to "back to browse" with cleared trail. Latent pre-T43 bug exposed by T43's credit-name navigation (which made album-detail reachable as a mid-trail node for the first time). Always check `_onBack`'s branch coverage when adding a new way for a view to become a trail intermediate.
+- Forward navigation handlers should PUSH to the search trail, never replace. Replacement makes sense for breadcrumb clicks (jumping to a level) but breaks Back when a "click another artist from this artist" path replaces the just-visited entry. The two operations look similar; treat them differently.
 
 ## Deploy Script
 - `./deploy.sh` at the project root: builds the frontend, auto-bumps the `manifest.json` patch version, then copies `frontend/volumio-panel.js` and `manifest.json` to `\\192.168.0.23\config\custom_components\volumio_ws\` (`services.py` / `services.yaml` only when newer than the HA copy). Reminds to restart HA at the end; never restarts automatically.
 
 ## Next Tasks
 - **T21 — Polish pass, multi-select, accessibility.**
+- **T44 follow-up — `_onBack` audit.** T43 surfaced a latent gap (album-detail restoration). Worth a sweep of all `_onBack` branches to confirm coverage of playlist-detail and any other view that can land mid-trail.
+- **T44 follow-up — `volumio-panel.js` is large (~2900 lines).** Step 5b's `_enterArtistDetail` / `_enterAlbumDetail` centralization helped; opportunistic similar refactors for browse/playlist entry points would let the panel keep growing without bloating individual methods.
 
 ## Housekeeping
 - `/config/custom_components/volumio_ws.old` should be deleted from the HA config dir (harmless but messy).

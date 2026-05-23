@@ -12,12 +12,17 @@
  *   currentUri: string - currently playing track URI
  *   quality: object - QualityInfo for album-level badge
  *   volumioUrl: string
+ *   story: string|null - album story text (null = hide section)
+ *   credits: array - [{key, values:[{name, uri}]}] (empty = hide section)
+ *   storyLoading: boolean - story section shows skeleton while true
+ *   creditsLoading: boolean - credits section shows skeleton while true
  *
  * Events:
  *   volumio-track-click: { uri, title, artist, ... }
  *   volumio-album-play: { uri }
  *   volumio-album-add-queue: { uri }
  *   volumio-navigate: { view, artist }
+ *   volumio-similar-artist-click: { artist, uri, albumart } (from credit name click)
  */
 import { LitElement, html, css } from "lit";
 import { formatTime, resolveArt } from "../utils/format-utils.js";
@@ -25,6 +30,9 @@ import { inferTrackQuality } from "../utils/quality-utils.js";
 import "./track-card.js";
 import "./quality-badge.js";
 import "./source-badge.js";
+
+const STORY_TRUNCATE_WORDS = 200;
+const CREDITS_INITIAL_ROWS = 6;
 
 class VolumioAlbumDetail extends LitElement {
   static get properties() {
@@ -39,6 +47,12 @@ class VolumioAlbumDetail extends LitElement {
       currentUri: { type: String, attribute: "current-uri" },
       quality: { type: Object },
       volumioUrl: { type: String, attribute: "volumio-url" },
+      story: { type: String },
+      credits: { type: Array, attribute: false },
+      storyLoading: { type: Boolean, attribute: "story-loading" },
+      creditsLoading: { type: Boolean, attribute: "credits-loading" },
+      _storyExpanded: { type: Boolean, state: true },
+      _creditsExpanded: { type: Boolean, state: true },
     };
   }
 
@@ -209,6 +223,132 @@ class VolumioAlbumDetail extends LitElement {
         text-align: right;
       }
 
+      /* ── Story (About this album) ────────── */
+      .section {
+        margin-top: var(--volumio-space-xl, 32px);
+      }
+
+      .section-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--primary-text-color);
+        margin-bottom: var(--volumio-space-md, 16px);
+      }
+
+      .story-text {
+        font-size: 14px;
+        line-height: 1.6;
+        color: var(--primary-text-color);
+        white-space: pre-wrap;
+      }
+
+      .story-toggle {
+        margin-top: var(--volumio-space-sm, 8px);
+        background: none;
+        border: none;
+        padding: 0;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--primary-color, #03a9f4);
+        cursor: pointer;
+      }
+
+      .story-toggle:hover {
+        text-decoration: underline;
+      }
+
+      /* ── Credits ──────────────────────────── */
+      .credits-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--volumio-space-sm, 8px);
+      }
+
+      .credit-row {
+        display: grid;
+        grid-template-columns: minmax(140px, 30%) 1fr;
+        gap: var(--volumio-space-md, 16px);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .credit-key {
+        color: var(--secondary-text-color);
+        text-transform: capitalize;
+      }
+
+      .credit-values {
+        color: var(--primary-text-color);
+      }
+
+      .credit-name {
+        cursor: pointer;
+        transition: color 0.15s;
+      }
+
+      .credit-name:hover {
+        color: var(--primary-color, #03a9f4);
+        text-decoration: underline;
+      }
+
+      .credits-toggle {
+        margin-top: var(--volumio-space-sm, 8px);
+        background: none;
+        border: none;
+        padding: 0;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--primary-color, #03a9f4);
+        cursor: pointer;
+      }
+
+      .credits-toggle:hover {
+        text-decoration: underline;
+      }
+
+      /* ── Section skeletons ────────────────── */
+      .skeleton-bar.w-full,
+      .skeleton-bar.w-90,
+      .skeleton-bar.w-75,
+      .skeleton-bar.w-60 {
+        height: 14px;
+        border-radius: 4px;
+        background: var(--secondary-text-color, #888);
+        animation: shimmer 1.4s ease-in-out infinite;
+        margin-bottom: 8px;
+      }
+
+      .skeleton-bar.w-full { width: 100%; }
+      .skeleton-bar.w-90 { width: 90%; }
+      .skeleton-bar.w-75 { width: 75%; }
+      .skeleton-bar.w-60 { width: 60%; }
+
+      .skeleton-credit-row {
+        display: grid;
+        grid-template-columns: minmax(140px, 30%) 1fr;
+        gap: var(--volumio-space-md, 16px);
+        margin-bottom: 8px;
+      }
+
+      .skeleton-credit-key,
+      .skeleton-credit-values {
+        height: 14px;
+        border-radius: 4px;
+        background: var(--secondary-text-color, #888);
+        animation: shimmer 1.4s ease-in-out infinite;
+      }
+
+      .skeleton-credit-key { width: 60%; }
+      .skeleton-credit-values { width: 80%; }
+
+      @media (max-width: 768px) {
+        .credit-row,
+        .skeleton-credit-row {
+          grid-template-columns: 1fr;
+          gap: 2px;
+        }
+      }
+
       /* ── Loading skeleton ─────────────────── */
       @keyframes shimmer {
         0% { opacity: 0.3; }
@@ -307,6 +447,26 @@ class VolumioAlbumDetail extends LitElement {
     this.currentUri = "";
     this.quality = null;
     this.volumioUrl = "";
+    this.story = null;
+    this.credits = [];
+    this.storyLoading = false;
+    this.creditsLoading = false;
+    this._storyExpanded = false;
+    this._creditsExpanded = false;
+  }
+
+  updated(changedProperties) {
+    // Reset expansions when album changes so a new album doesn't inherit
+    // the previous album's expanded state.
+    if (
+      changedProperties.has("albumTitle") ||
+      changedProperties.has("albumArtist") ||
+      changedProperties.has("story") ||
+      changedProperties.has("credits")
+    ) {
+      this._storyExpanded = false;
+      this._creditsExpanded = false;
+    }
   }
 
   render() {
@@ -399,7 +559,126 @@ class VolumioAlbumDetail extends LitElement {
           No tracks found
         </div>
       `}
+
+      ${this._renderStorySection()}
+      ${this._renderCreditsSection()}
     `;
+  }
+
+  _renderStorySection() {
+    if (this.storyLoading) {
+      return html`
+        <div class="section" aria-busy="true" aria-label="Loading album story">
+          <div class="section-title">About this album</div>
+          <div class="skeleton-bar w-full"></div>
+          <div class="skeleton-bar w-90"></div>
+          <div class="skeleton-bar w-75"></div>
+        </div>
+      `;
+    }
+    if (!this.story) return "";
+
+    const words = this.story.split(/\s+/);
+    const truncated = words.length > STORY_TRUNCATE_WORDS && !this._storyExpanded;
+    const displayText = truncated
+      ? words.slice(0, STORY_TRUNCATE_WORDS).join(" ") + "…"
+      : this.story;
+
+    return html`
+      <div class="section">
+        <div class="section-title">About this album</div>
+        <div class="story-text">${displayText}</div>
+        ${words.length > STORY_TRUNCATE_WORDS
+          ? html`
+            <button class="story-toggle" @click=${this._toggleStory}>
+              ${this._storyExpanded ? "Show less" : "Read more"}
+            </button>
+          `
+          : ""}
+      </div>
+    `;
+  }
+
+  _renderCreditsSection() {
+    if (this.creditsLoading) {
+      return html`
+        <div class="section" aria-busy="true" aria-label="Loading album credits">
+          <div class="section-title">Credits</div>
+          ${Array(5).fill(0).map(() => html`
+            <div class="skeleton-credit-row">
+              <div class="skeleton-credit-key"></div>
+              <div class="skeleton-credit-values"></div>
+            </div>
+          `)}
+        </div>
+      `;
+    }
+    if (!this.credits || this.credits.length === 0) return "";
+
+    const showAll = this._creditsExpanded || this.credits.length <= CREDITS_INITIAL_ROWS;
+    const visible = showAll ? this.credits : this.credits.slice(0, CREDITS_INITIAL_ROWS);
+
+    return html`
+      <div class="section">
+        <div class="section-title">Credits</div>
+        <div class="credits-list">
+          ${visible.map(row => html`
+            <div class="credit-row">
+              <div class="credit-key">${row.key || ""}</div>
+              <div class="credit-values">
+                ${(row.values || []).map((v, i) => html`<span
+                  class="credit-name"
+                  role="button"
+                  tabindex="0"
+                  @click=${() => this._onCreditClick(v)}
+                  @keydown=${(e) => this._onCreditKeydown(e, v)}
+                >${v.name || ""}</span>${i < (row.values || []).length - 1 ? ", " : ""}`)}
+              </div>
+            </div>
+          `)}
+        </div>
+        ${this.credits.length > CREDITS_INITIAL_ROWS
+          ? html`
+            <button class="credits-toggle" @click=${this._toggleCredits}>
+              ${this._creditsExpanded
+                ? "Show fewer credits"
+                : `Show all ${this.credits.length} credits`}
+            </button>
+          `
+          : ""}
+      </div>
+    `;
+  }
+
+  _toggleStory() {
+    this._storyExpanded = !this._storyExpanded;
+  }
+
+  _toggleCredits() {
+    this._creditsExpanded = !this._creditsExpanded;
+  }
+
+  _onCreditClick(value) {
+    // mbid:/artist/... URIs are MusicBrainz IDs, not Volumio URIs. Fire
+    // the same event similar-artist clicks fire; the panel translates
+    // the name into globalUriArtist/Name via the existing resolver path.
+    const name = value?.name || "";
+    if (!name) return;
+    this.dispatchEvent(new CustomEvent("volumio-similar-artist-click", {
+      detail: {
+        artist: name,
+        uri: `globalUriArtist/${name}`,
+        albumart: "",
+      },
+      bubbles: true, composed: true,
+    }));
+  }
+
+  _onCreditKeydown(e, value) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      this._onCreditClick(value);
+    }
   }
 
   _renderSkeleton() {
