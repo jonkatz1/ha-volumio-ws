@@ -31,6 +31,7 @@ Rule: each layer calls only the layer directly below. Coordinator methods MUST r
 | T19 — Queue panel, context menus, toasts | DONE | Commit f50b247. Queue UI with drag-drop reorder, remove, save-as-playlist, clear-with-confirmation. Context menus on all items. Toast notifications. ha-adapter.js abstraction. replaceAndPlay and saveQueueToPlaylist native WS commands. Branch: `feat/T19-queue-context-toasts`. |
 | T20 — Playlists, favorites, history, settings, quality fix | DONE | Commit 5e6c3b7 on feat/T20-views-settings (merged to main). 5 new components, inferTrackQuality fix for service-name trackType. v0.1.43 deployed. |
 | #38 — Multi-device panel | DONE | Commit <HASH> on fix/38-multi-device-panel (awaiting review). New WS commands volumio_ws/list_devices and config_entry_id-routed subscribe_queue. Adapter resolves entity via list_devices (no string matching). Top-bar device selector (icon-only, far right, hidden when single-device). A3 ConfigEntryNotReady on connect failure. A7 localStorage JSON.parse guards on history + recent searches. |
+| T42 — Pre-release bug fixes | DONE | Commit 0fb6a7f on fix/T42-art-artist-nav. Fix album art 401s after HA restart (raw albumart in extra_state_attributes, store raw paths in history). Fix artist navigation blank pages (remove encodeURIComponent, search-based artist/album URI resolution). Album navigation from Now Playing. |
 
 Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-initiated PING (`2`) every 23s, server responds PONG (`3`) within 5s. Reconnection with exponential backoff (5s → 60s cap). No external dependencies — aiohttp is HA-native.
 
@@ -49,7 +50,7 @@ Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-init
   - `{endpoint: "metavolumio", data: {mode: "storyAlbum", artist: "...", album: "..."}}` → album story text
   - `{endpoint: "metavolumio", data: {mode: "creditsAlbum", artist: "...", album: "..."}}` → album credits
   - `{endpoint: "getSimilarArtists", data: {artist: "..."}}` → array of `{artist, albumart, uri}`
-  - Artist URI pattern: `globalUriArtist/{artist name}` (used with browseLibrary for cross-service nav)
+  - Artist URI pattern: `globalUriArtist/{artist name}` (used with browseLibrary for cross-service nav). **Must use literal spaces** — `%20` encoding returns empty results. Only searches local library; for streaming services, resolve via search to get source-specific URIs (e.g. `qobuz://artist/148676`).
 
 ## File Map (`custom_components/volumio_ws/`)
 | File | Purpose |
@@ -60,7 +61,7 @@ Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-init
 | `config_flow.py` | UI config flow — `async_test_connect` for host/port validation, zeroconf discovery handler. |
 | `transport.py` | `EIO3Transport` — raw aiohttp WebSocket, EIO3 framing, client-initiated PING/PONG, exponential-backoff reconnection. |
 | `coordinator.py` | `VolumioWebSocketCoordinator` — runs on top of `EIO3Transport`; owns state cache, listeners, request/reply futures. Emits `getBrowseSources` on connect; exposes `browse_sources`, `browse_source_names`, `sw_version`. Queue/playlist/favorites methods (`async_get_queue`, `async_add_to_queue`, `async_list_playlists`, `async_list_favourites`, `async_add_to_favourites`, etc). Push handlers for `pushQueue`, `pushListPlaylist`, and `pushBrowseSources` resolve request/reply futures and notify state listeners. |
-| `media_player.py` | `MediaPlayerEntity` — playback controls, volume, browse_media. `extra_state_attributes` (queue_position, uri, volatile, bitrate, source_list); shuffle null→false fix; `SELECT_SOURCE` removed from supported features. |
+| `media_player.py` | `MediaPlayerEntity` — playback controls, volume, browse_media. `extra_state_attributes` (queue_position, uri, volatile, bitrate, albumart, source_list); shuffle null→false fix; `SELECT_SOURCE` removed from supported features. |
 | `sensor.py` | Sensor entities for Volumio audio metadata (sample rate, bit depth, etc.). |
 | `browse_media.py` | Browse-media tree builder over coordinator's `async_browse` / `async_get_browse_sources`. |
 | `services.py` | Service handlers — `register_services()` called from `async_setup`. 20 services total: search, browse, get_browse_sources, queue (get/add/remove/move/clear/play_index), playlist (list/create/delete/add_track/remove_track/play/enqueue), favorites (list/add/remove). Uses async closures for HA `SupportsResponse` compatibility. |
@@ -84,6 +85,7 @@ Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-init
 - `components/track-card.js` — reusable track list row (48px). Compact mode. Add-to-queue button. Playing state.
 - `components/album-detail.js` — album header + track listing. Play and Add to Queue buttons.
 - `components/artist-detail.js` — artist albums grid, placeholder bio/similar sections.
+- `utils/format-utils.js` — `resolveArt(albumart, volumioUrl)` — resolves raw Volumio albumart paths to full URLs. Handles relative `/albumart?...` paths, absolute CDN URLs, and empty values.
 - `components/search-results.js` — grouped by source then type, collapsible, show-all expansion.
 - `utils/quality-utils.js` — 5-tier detection (hires / lossless / high / basic / stream / unknown). Treats Volumio service names (`qobuz`, `tidal`, …) as unknown codec and infers tier from bitdepth/samplerate.
 - `styles/shared-styles.js` — design tokens, focus ring, reduced-motion handling. Theme-aware via HA CSS vars.
@@ -119,6 +121,9 @@ Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-init
 - HA panel caching is aggressive. Bumping `manifest.json` version forces invalidation. `deploy.sh` auto-bumps the patch.
 - `pushQueue` subscription receives data but doesn't always trigger Lit re-renders. Workaround: call `queue_get` after mutations. Needs investigation in T19.
 - Panel registration is once-per-domain: `panel_custom.async_register_panel` short-circuits on subsequent config entries. Per-entry data in `panel.config` is locked to whichever entry initialized first — never use it as a per-device source. Resolve devices at runtime via a custom WS command instead.
+- Volumio WebSocket URIs use literal strings, not URL encoding. `globalUriArtist/Peter Gabriel` works; `globalUriArtist/Peter%20Gabriel` returns empty. This is a JSON payload over WebSocket, not an HTTP URL.
+- Volumio search results never use `type: "artist"`. Artist items are `type: "folder"` (mpd) or `type: "folder-with-favourites"` (Qobuz/TIDAL). Match artist lists by list title containing "Artist" + service name, not item type.
+- HA `entity_picture` is a proxied URL with session-bound auth tokens. Never persist it to localStorage — tokens expire on HA restart. Store the raw source URL and resolve at render time.
 
 ## Deploy Script
 - `./deploy.sh` at the project root: builds the frontend, auto-bumps the `manifest.json` patch version, then copies `frontend/volumio-panel.js` and `manifest.json` to `\\192.168.0.23\config\custom_components\volumio_ws\` (`services.py` / `services.yaml` only when newer than the HA copy). Reminds to restart HA at the end; never restarts automatically.
@@ -142,5 +147,4 @@ Transport: Raw aiohttp WebSocket with manual EIO3 protocol handling. Client-init
 | — | Panel | Alpha index uses `position: fixed` — may overlap queue panel on smaller screens. |
 | — | Panel | No hash routing / deep linking for browse navigation. Browser back/forward doesn't work. |
 | — | Panel | No toast/snackbar feedback for queue actions. |
-| — | History | albumart stored as empty string (HA proxy URLs go stale). History items show fallback icon only. |
-| — | Browse | "Go to Album" from track context menu doesn't resolve album URI for Qobuz/TIDAL tracks. |
+| — | Browse | "Go to Album" from context menu and Now Playing: search-based resolution works for most tracks but may fail if album name differs between playback metadata and library index. |

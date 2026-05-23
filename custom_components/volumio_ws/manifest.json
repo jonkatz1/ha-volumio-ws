@@ -1,14 +1,14 @@
 {
   "domain": "volumio_ws",
-  "name": "Volumio WebSocket",
-  "codeowners": ["@jkatz"],
+  "name": "LitGUI for Volumio",
+  "codeowners": ["@jonkatz1"],
   "config_flow": true,
   "dependencies": ["http", "frontend", "panel_custom"],
-  "documentation": "https://github.com/jkatz/ha-volumio-ws",
+  "documentation": "https://github.com/jonkatz1/ha-volumio-ws",
   "integration_type": "device",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/jkatz/ha-volumio-ws/issues",
+  "issue_tracker": "https://github.com/jonkatz1/ha-volumio-ws/issues",
   "requirements": [],
-  "version": "0.1.47",
+  "version": "0.1.60",
   "zeroconf": ["_Volumio._tcp.local."]
 }

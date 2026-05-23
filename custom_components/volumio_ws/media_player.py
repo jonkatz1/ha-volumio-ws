@@ -254,6 +254,10 @@ class VolumioMediaPlayer(MediaPlayerEntity):
         if bitrate is not None:
             attrs["bitrate"] = bitrate
 
+        albumart = state.get("albumart")
+        if albumart is not None:
+            attrs["albumart"] = albumart
+
         source_names = self.coordinator.browse_source_names
         if source_names:
             attrs["source_list"] = source_names

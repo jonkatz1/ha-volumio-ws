@@ -88,6 +88,7 @@ function normalizeState(entity, sensorBase, hass) {
     artist: a.media_artist || "",
     album: a.media_album_name || "",
     albumArt: a.entity_picture || "",
+    rawAlbumart: a.albumart || "",
     duration: a.media_duration || 0,
     position: a.media_position || 0,
     positionUpdatedAt: a.media_position_updated_at || "",
