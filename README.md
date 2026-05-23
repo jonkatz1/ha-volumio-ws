@@ -1,149 +1,175 @@
-# Volumio WebSocket Integration for Home Assistant
+# LitGUI for Volumio
 
-A custom Home Assistant integration for Volumio that uses the WebSocket (Socket.io) API
-for real-time state updates and full feature coverage.
+A custom Home Assistant integration that brings Volumio's full feature set into your HA sidebar — real-time WebSocket connection, rich panel UI, and deep automation support.
 
-## Why This Exists
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![Home Assistant](https://img.shields.io/badge/HA-2024.7%2B-blue.svg)](https://www.home-assistant.io/)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
-The built-in HA Volumio integration uses REST API polling and has limited functionality:
-- No real-time state updates (polls every 10s)
-- Buggy `browse_media` on Volumio 3
-- No search, queue management, playlist CRUD, or favorites
-- No audio metadata sensors (sample rate, bit depth, codec)
-- No multiroom device discovery
+## What It Does
 
-This integration uses Volumio's Socket.io WebSocket API for push-based state and
-exposes the full Volumio feature set through HA entities and services.
+The built-in HA Volumio integration polls every 10 seconds and offers limited controls. LitGUI replaces that with a persistent WebSocket connection for instant state updates, a full sidebar panel for browsing and playback, and 21 services for automations.
+
+It runs alongside the built-in integration (different domain: `volumio_ws`) so you can migrate at your own pace.
 
 ## Features
 
-### Media Player Entity
-- Real-time state via `pushState` (no polling)
-- Full playback control (play, pause, stop, next, prev, seek)
-- Volume control (set, mute, unmute, increment, decrement)
-- Source selection
+**Sidebar Panel** — a complete music player UI inside Home Assistant:
+- Now Playing view with album art, UltraBlur background, quality and source badges
+- Browse your full library — local files, Qobuz, TIDAL, Spotify, web radio, podcasts
+- Search across all sources with recent search history
+- Queue management with drag-and-drop reorder, remove, save-as-playlist
+- Playlists, Favorites, and History views
+- Context menus on every item (Play Now, Play Next, Add to Queue, Add to Playlist)
+- Multi-device support with top-bar device selector
+- Keyboard shortcuts for power users
+- Dark and light theme support via HA theme variables
+- Settings panel with per-user preferences
+
+**Real-Time Connection** — WebSocket (Socket.IO) for push-based state, not polling:
+- Instant playback state updates via `pushState`
+- Live queue updates via `pushQueue`
+- Automatic reconnection with exponential backoff
+- No external dependencies — uses HA-native aiohttp
+
+**Media Player Entity** — full playback control:
+- Play, pause, stop, next, previous, seek
+- Volume control (set, mute, unmute)
 - Shuffle and repeat modes
-- Browse media (library, playlists, radio, plugins)
-- Search (artists, albums, tracks)
+- Browse media tree
 
-### Sensors
-- `sensor.volumio_<name>_sample_rate` — e.g., "96 kHz"
-- `sensor.volumio_<name>_bit_depth` — e.g., "24 bit"
-- `sensor.volumio_<name>_track_type` — e.g., "flac"
-- `sensor.volumio_<name>_channels` — e.g., "2"
+**Audio Metadata Sensors**:
+- Sample rate (e.g., "96 kHz")
+- Bit depth (e.g., "24 bit")
+- Track type / codec (e.g., "flac")
+- Channels (e.g., "2")
 
-### Custom Services
-- `volumio_ws.search` — Search library (returns artists, albums, tracks)
-- `volumio_ws.browse` — Browse library by URI
-- `volumio_ws.add_to_queue` — Add track/album/playlist to queue
-- `volumio_ws.remove_from_queue` — Remove track from queue by position
-- `volumio_ws.clear_queue` — Clear the play queue
-- `volumio_ws.move_queue` — Reorder queue items
-- `volumio_ws.create_playlist` — Create a new playlist
-- `volumio_ws.delete_playlist` — Delete a playlist
-- `volumio_ws.add_to_playlist` — Add track to playlist
-- `volumio_ws.remove_from_playlist` — Remove track from playlist
-- `volumio_ws.play_playlist` — Clear queue and play a playlist
-- `volumio_ws.add_to_favorites` — Add track to favorites
-- `volumio_ws.remove_from_favorites` — Remove track from favorites
-- `volumio_ws.call_plugin_method` — Call any Volumio plugin method
-- `volumio_ws.set_sleep` — Set sleep timer
-- `volumio_ws.set_alarm` — Set alarm
+**Services for Automations** — 21 services covering:
+- Library: search, browse, get browse sources
+- Queue: get, add, remove, move, clear, play by index, replace and play, save to playlist
+- Playlists: list, create, delete, add track, remove track, play, enqueue
+- Favorites: list, add, remove
 
-### Multiroom (Future)
-- Auto-discover Volumio devices on the network
-- Group/ungroup for synchronized playback
+All services support `SupportsResponse` for use in automations and scripts that need return data.
 
-## Architecture
-
-```
-volumio_ws/
-├── __init__.py              # Integration setup, service registration
-├── manifest.json            # HACS/HA integration metadata
-├── config_flow.py           # UI-based configuration (host, port)
-├── const.py                 # Constants, domain, defaults
-├── coordinator.py           # WebSocket connection manager (Socket.io)
-├── media_player.py          # media_player entity with full controls
-├── sensor.py                # Audio metadata sensors
-├── browse_media.py          # browse_media implementation
-├── services.py              # Custom service handlers
-├── services.yaml            # Service definitions for HA
-├── strings.json             # UI strings
-└── translations/
-    └── en.json              # English translations
-```
-
-### Key Design Decisions
-
-1. **Socket.io via `python-socketio[asyncio_client]`** — Async client that matches
-   Volumio's server. Maintains persistent connection with auto-reconnect.
-
-2. **DataUpdateCoordinator pattern** — But instead of polling, the coordinator
-   subscribes to `pushState` events and pushes updates to entities instantly.
-
-3. **Album art URL handling** — Volumio returns relative paths for albumart.
-   The integration prepends `http://{host}:{port}` automatically.
-
-4. **Browse media** — Maps Volumio's `browseLibrary` response to HA's
-   `BrowseMedia` object tree. Supports pagination via `limit`/`offset`.
-
-5. **Separate from built-in integration** — Uses domain `volumio_ws` to avoid
-   conflicts. Can run alongside the built-in `volumio` integration during migration.
+**Multi-Device** — add multiple Volumio devices, each as its own config entry. The panel's device selector lets you switch between them. Services target devices via `config_entry_id`.
 
 ## Installation
 
-### HACS (recommended)
-1. Add this repository as a custom repository in HACS
-2. Install "Volumio WebSocket"
-3. Restart Home Assistant
-4. Add integration → Volumio WebSocket → Enter host IP and port (default 3000)
+### HACS (Recommended)
+
+1. Open HACS in Home Assistant
+2. Click the three dots menu (top right) → **Custom repositories**
+3. Paste `https://github.com/jonkatz1/ha-volumio-ws` and select **Integration**
+4. Click **Add**
+5. Find "LitGUI for Volumio" in the HACS store and click **Download**
+6. Restart Home Assistant
 
 ### Manual
-1. Copy `custom_components/volumio_ws/` to your HA `config/custom_components/`
+
+1. Copy the `custom_components/volumio_ws/` folder into your HA `config/custom_components/` directory
 2. Restart Home Assistant
-3. Add integration via UI
+
+## Configuration
+
+### Adding a Device
+
+1. Go to **Settings → Devices & Services → Add Integration**
+2. Search for "LitGUI for Volumio"
+3. Enter your Volumio device's IP address and port (default: 3000)
+4. Give it a name (e.g., "Living Room")
+5. The sidebar panel appears automatically
+
+### Panel Toggle
+
+Each device has a "Configure" option in Settings → Integrations:
+- **Enable sidebar panel** (default: on) — controls whether the Volumio panel appears in your HA sidebar
+- The panel shows if *any* device has it enabled; it only disappears when *all* devices have it disabled
+
+### Multiple Devices
+
+Add each Volumio device as a separate integration entry. The panel's device selector (top bar) lets you switch between them.
+
+## Services
+
+All services are under the `volumio_ws` domain and require a `config_entry_id` target. They can be called from Developer Tools → Services, automations, and scripts.
+
+### Library
+| Service | Description |
+|---------|-------------|
+| `search` | Search across all sources. Returns grouped results. |
+| `browse` | Browse a library URI. Returns items at that path. |
+| `get_browse_sources` | List available browse sources (local, Qobuz, etc.). |
+
+### Queue
+| Service | Description |
+|---------|-------------|
+| `queue_get` | Get the current play queue. |
+| `queue_add` | Add a track, album, or playlist to the queue. |
+| `queue_remove` | Remove a track by queue position. |
+| `queue_move` | Reorder a queue item (from position → to position). |
+| `queue_clear` | Clear the entire queue. |
+| `queue_play_index` | Jump to a specific queue position. |
+| `replace_and_play` | Clear queue, add item, and start playback. |
+| `save_queue_to_playlist` | Save the current queue as a named playlist. |
+
+### Playlists
+| Service | Description |
+|---------|-------------|
+| `playlist_list` | List all playlists. |
+| `playlist_create` | Create a new empty playlist. |
+| `playlist_delete` | Delete a playlist by name. |
+| `playlist_add_track` | Add a track to an existing playlist. |
+| `playlist_remove_track` | Remove a track from a playlist. |
+| `playlist_play` | Clear queue and play a playlist. |
+| `playlist_enqueue` | Add all tracks from a playlist to the queue. |
+
+### Favorites
+| Service | Description |
+|---------|-------------|
+| `favorites_list` | List all favorites. |
+| `favorites_add` | Add a track to favorites. |
+| `favorites_remove` | Remove a track from favorites. |
+
+### Example Automation
+
+```yaml
+automation:
+  - alias: "Morning Music"
+    trigger:
+      - platform: time
+        at: "07:00:00"
+    action:
+      - action: volumio_ws.playlist_play
+        data:
+          config_entry_id: "your_config_entry_id"
+          name: "Morning Jazz"
+```
+
+## Requirements
+
+- **Home Assistant** 2024.7.0 or later
+- **Volumio 3** (any hardware — Raspberry Pi, x86, Tinkerboard, etc.)
+- Network access from HA to your Volumio device(s) on port 3000
 
 ## Development
 
-### Requirements
-- Python 3.11+
-- `python-socketio[asyncio_client]>=5.0`
-- `aiohttp`
-
-### Testing locally
 ```bash
-pip install python-socketio[asyncio_client] aiohttp
-python -c "
-import asyncio
-import socketio
-
-sio = socketio.AsyncClient()
-
-@sio.on('pushState')
-async def on_state(data):
-    print(f'State: {data[\"status\"]} - {data.get(\"artist\",\"\")} - {data.get(\"title\",\"\")}')
-    print(f'Audio: {data.get(\"samplerate\",\"\")} / {data.get(\"bitdepth\",\"\")} / {data.get(\"trackType\",\"\")}')
-
-async def main():
-    await sio.connect('http://YOUR_VOLUMIO_IP:3000')
-    await sio.emit('getState')
-    await asyncio.sleep(30)
-    await sio.disconnect()
-
-asyncio.run(main())
-"
+git clone https://github.com/jonkatz1/ha-volumio-ws.git
+cd ha-volumio-ws/frontend
+npm install
+npm run build
 ```
 
-## Roadmap
+The frontend is a Lit-based web component built with Rollup. The built bundle lands at `custom_components/volumio_ws/frontend/volumio-panel.js`.
 
-- [ ] v0.1: Core media_player entity with WebSocket state
-- [ ] v0.2: Browse media + search
-- [ ] v0.3: Queue management services
-- [ ] v0.4: Playlist and favorites services
-- [ ] v0.5: Audio metadata sensors
-- [ ] v0.6: Multiroom discovery
-- [ ] v1.0: HACS release
+For local testing, `deploy.sh` copies the bundle and backend files to your HA instance over SMB.
 
 ## License
 
-MIT
+[GPL v3](LICENSE)
+
+## Credits
+
+Built by [Jon Katz](https://github.com/jonkatz1)
+Powered by [LitGUI](https://litgui.com)

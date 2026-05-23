@@ -7,10 +7,16 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.const import CONF_HOST, CONF_PORT
+from homeassistant.core import callback
 
 from .const import DOMAIN, DEFAULT_PORT, DEFAULT_NAME, CONF_NAME
+
 from .transport import async_test_connect
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,11 +29,25 @@ DATA_SCHEMA = vol.Schema(
     }
 )
 
+OPTIONS_SCHEMA = vol.Schema(
+    {
+        vol.Required("enable_panel", default=True): bool,
+    }
+)
+
 
 class VolumioWSConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Volumio WebSocket."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry,
+    ) -> VolumioWSOptionsFlow:
+        """Create the options flow."""
+        return VolumioWSOptionsFlow()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -64,3 +84,21 @@ class VolumioWSConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     # TODO: async_step_zeroconf for auto-discovery via _Volumio._tcp.local.
+
+
+class VolumioWSOptionsFlow(OptionsFlow):
+    """Handle options flow for Volumio WebSocket — panel toggle."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(
+                OPTIONS_SCHEMA, self.config_entry.options
+            ),
+        )

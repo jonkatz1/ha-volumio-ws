@@ -188,6 +188,26 @@ class VolumioLeftNav extends LitElement {
       .collapsed .pin-btn span {
         display: none;
       }
+
+      /* ── Brand footer ──────────────── */
+      .brand-link {
+        display: block;
+        text-align: center;
+        padding: 4px 0 2px;
+        font-size: 11px;
+        text-decoration: none;
+        color: var(--secondary-text-color, #888);
+        opacity: 0.5;
+        transition: opacity 0.15s;
+      }
+
+      .brand-link:hover {
+        opacity: 0.8;
+      }
+
+      .collapsed .brand-link {
+        display: none;
+      }
     `;
   }
 
@@ -255,6 +275,7 @@ class VolumioLeftNav extends LitElement {
             <ha-icon icon="${isCollapsed ? "mdi:pin" : "mdi:pin-off"}"></ha-icon>
             <span>${isCollapsed ? "Pin" : "Collapse"}</span>
           </button>
+          <a class="brand-link" href="https://litgui.com" target="_blank" rel="noopener noreferrer">litgui.com</a>
         </div>
       </nav>
     `;

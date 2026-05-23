@@ -193,6 +193,33 @@ class VolumioSettingsPanel extends LitElement {
         white-space: nowrap;
         max-width: 60%;
       }
+
+      /* ── About attribution ─────────── */
+      .about-attribution {
+        padding-top: 12px;
+        margin-top: 4px;
+        border-top: 1px solid var(--divider-color, rgba(255, 255, 255, 0.04));
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        line-height: 1.4;
+      }
+
+      .about-attribution a {
+        color: var(--secondary-text-color);
+        text-decoration: none;
+        opacity: 0.8;
+        transition: opacity 0.15s;
+      }
+
+      .about-attribution a:hover {
+        opacity: 1;
+        text-decoration: underline;
+      }
+
+      .about-sep {
+        margin: 0 6px;
+        opacity: 0.4;
+      }
     `;
   }
 
@@ -281,9 +308,8 @@ class VolumioSettingsPanel extends LitElement {
             <span class="about-value">${this.aboutInfo.entityId}</span>
           </div>
         ` : ""}
-        <div class="about-row">
-          <span class="about-key">Integration</span>
-          <span class="about-value">ha-volumio-ws</span>
+        <div class="about-attribution">
+          LitGUI for Volumio<span class="about-sep">·</span><a href="https://litgui.com" target="_blank" rel="noopener noreferrer">litgui.com</a>
         </div>
       </div>
     `;

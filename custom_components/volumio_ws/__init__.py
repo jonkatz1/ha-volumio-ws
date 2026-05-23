@@ -9,9 +9,10 @@ import aiohttp
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components import panel_custom
+from homeassistant.components.frontend import async_remove_panel
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
@@ -31,6 +32,10 @@ PANEL_TITLE = "Volumio"
 PANEL_URL_PATH = "volumio"
 PANEL_COMPONENT_NAME = "volumio-panel"
 PANEL_JS_FILENAME = "volumio-panel.js"
+
+# Key to track whether the static path for the panel JS has been registered
+# (survives panel unregister/re-register cycles within a single HA lifetime).
+_PANEL_STATIC_KEY = f"{DOMAIN}_panel_static"
 
 
 async def _fetch_system_version(hass: HomeAssistant, host: str, port: int) -> str | None:
@@ -95,43 +100,65 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Register the sidebar panel (once, first entry wins)
-    await _async_register_panel(hass, entry)
+    # Register the sidebar panel if this entry has it enabled (default: True).
+    # Panel is domain-level — first entry with enable_panel=True wins the
+    # panel config. The device selector inside the panel handles multi-device.
+    if entry.options.get("enable_panel", True):
+        await _async_register_panel(hass, entry)
+
+    # Listen for option changes (panel toggle)
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     return True
+
+
+# ── Panel helpers ────────────────────────────────────────────────────
+
+
+async def _async_ensure_static_path(hass: HomeAssistant) -> bool:
+    """Register the static path for the panel JS bundle (once per HA lifetime).
+
+    Returns True if the static path is available, False on failure.
+    This survives panel unregister/re-register cycles — the JS file
+    stays served even when the sidebar entry is removed.
+    """
+    if hass.data.get(_PANEL_STATIC_KEY):
+        return True
+
+    panel_dir = os.path.join(os.path.dirname(__file__), "frontend")
+    static_url = f"/{DOMAIN}_panel"
+
+    try:
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(static_url, panel_dir, cache_headers=False)]
+        )
+        hass.data[_PANEL_STATIC_KEY] = True
+        return True
+    except Exception as err:
+        _LOGGER.error("Failed to register panel static path: %s", err)
+        return False
 
 
 async def _async_register_panel(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> None:
-    """Register the Volumio sidebar panel (once).
+    """Register the Volumio sidebar panel.
 
-    Serves the panel JS file via a static path and registers
-    a custom panel in the HA sidebar. Skips if already registered
-    (handles multiple config entries gracefully).
+    Ensures the static path is registered, then adds the sidebar entry.
+    Skips if the panel is already present (handles multiple config entries).
     """
-    # Check if panel is already registered (avoid duplicates)
+    # Already in the sidebar — nothing to do
     if PANEL_URL_PATH in hass.data.get("frontend_panels", {}):
         _LOGGER.debug("Panel already registered, skipping")
         return
 
-    host = entry.data[CONF_HOST]
-    port = entry.data.get(CONF_PORT, DEFAULT_PORT)
-
-    # Path to the built JS bundle
-    panel_dir = os.path.join(os.path.dirname(__file__), "frontend")
-    static_url = f"/{DOMAIN}_panel"
-
-    # Register the static file path so HA serves the JS file
-    try:
-        await hass.http.async_register_static_paths(
-            [StaticPathConfig(static_url, panel_dir, cache_headers=False)]
-        )
-    except Exception as err:
-        _LOGGER.error("Failed to register panel static path: %s", err)
+    if not await _async_ensure_static_path(hass):
         return
 
-    # Register the custom panel in the sidebar
+    host = entry.data[CONF_HOST]
+    port = entry.data.get(CONF_PORT, DEFAULT_PORT)
+    static_url = f"/{DOMAIN}_panel"
+
     try:
         await panel_custom.async_register_panel(
             hass,
@@ -152,6 +179,44 @@ async def _async_register_panel(
         _LOGGER.error("Failed to register panel: %s", err)
 
 
+@callback
+def _async_unregister_panel(hass: HomeAssistant) -> None:
+    """Remove the Volumio sidebar panel (if present)."""
+    if PANEL_URL_PATH in hass.data.get("frontend_panels", {}):
+        async_remove_panel(hass, PANEL_URL_PATH)
+        _LOGGER.info("Volumio panel removed from sidebar")
+
+
+def _any_entry_has_panel_enabled(hass: HomeAssistant) -> bool:
+    """Return True if any loaded config entry has the panel enabled."""
+    for entry_id in hass.data.get(DOMAIN, {}):
+        entry = hass.config_entries.async_get_entry(entry_id)
+        if entry and entry.options.get("enable_panel", True):
+            return True
+    return False
+
+
+# ── Update listener ──────────────────────────────────────────────────
+
+
+async def _async_update_listener(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    """Handle config entry options update (panel toggle)."""
+    if _any_entry_has_panel_enabled(hass):
+        # Find the first entry with panel enabled to use for registration
+        for entry_id in hass.data.get(DOMAIN, {}):
+            e = hass.config_entries.async_get_entry(entry_id)
+            if e and e.options.get("enable_panel", True):
+                await _async_register_panel(hass, e)
+                break
+    else:
+        _async_unregister_panel(hass)
+
+
+# ── Unload ───────────────────────────────────────────────────────────
+
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a Volumio WebSocket config entry."""
     coordinator: VolumioWebSocketCoordinator = hass.data[DOMAIN][entry.entry_id]
@@ -161,5 +226,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
+
+        # Remove panel if no remaining entries have it enabled
+        if not _any_entry_has_panel_enabled(hass):
+            _async_unregister_panel(hass)
 
     return unload_ok

@@ -17,5 +17,15 @@
     "abort": {
       "already_configured": "This Volumio device is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "LitGUI for Volumio Options",
+        "data": {
+          "enable_panel": "Enable sidebar panel"
+        }
+      }
+    }
   }
 }
