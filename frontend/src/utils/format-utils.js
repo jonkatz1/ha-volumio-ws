@@ -34,7 +34,7 @@ export function formatTimeMs(ms) {
  * Relative paths get the Volumio base URL prepended.
  * Rejects javascript:/data:/etc URI schemes from either input.
  * @param {string} albumart - raw albumart path from Volumio
- * @param {string} volumioUrl - base Volumio URL (e.g. "http://192.168.0.24:3000")
+ * @param {string} volumioUrl - base Volumio URL (e.g. "http://192.168.1.100:3000")
  * @returns {string}
  */
 export function resolveArt(albumart, volumioUrl) {
