@@ -141,10 +141,19 @@ class EIO3Transport:
         ws_timeout = aiohttp.ClientWSTimeout(ws_close=10.0)
 
         try:
-            self._ws = await session.ws_connect(
-                self._ws_url,
-                timeout=ws_timeout,
+            self._ws = await asyncio.wait_for(
+                session.ws_connect(
+                    self._ws_url,
+                    timeout=ws_timeout,
+                ),
+                timeout=15,
             )
+        except asyncio.TimeoutError:
+            _LOGGER.warning(
+                "WebSocket open to %s:%s timed out after 15s",
+                self._host, self._port,
+            )
+            raise
         except Exception as err:
             _LOGGER.error(
                 "Failed to open WebSocket to %s:%s: %s",
@@ -153,10 +162,9 @@ class EIO3Transport:
             raise
 
         # Wait for Open packet (type "0") and SIO connect ack ("40")
-        open_received = False
-        sio_connected = False
-
-        try:
+        async def _await_handshake() -> bool:
+            """Read frames until SIO connect ack received. Returns True on ack."""
+            open_received = False
             async for msg in self._ws:
                 if msg.type != aiohttp.WSMsgType.TEXT:
                     continue
@@ -164,14 +172,11 @@ class EIO3Transport:
                 raw = msg.data
 
                 if raw.startswith("0") and not open_received:
-                    # EIO3 Open packet
                     self._parse_open_packet(raw)
                     open_received = True
 
                 elif raw == "40" and open_received:
-                    # SIO connect ack — connection fully established
-                    sio_connected = True
-                    break
+                    return True
 
                 elif raw.startswith("42"):
                     # Some servers send events before we're "ready" —
@@ -179,11 +184,19 @@ class EIO3Transport:
                     # during handshake. Route them normally.
                     self._dispatch_event(raw)
 
-                # Safety: don't loop forever waiting
-                if open_received and not sio_connected:
-                    # We got Open but waiting for 40 — keep reading
-                    continue
+            return False
 
+        sio_connected = False
+        try:
+            sio_connected = await asyncio.wait_for(_await_handshake(), timeout=15)
+        except asyncio.TimeoutError:
+            _LOGGER.warning(
+                "EIO3 handshake to %s:%s timed out after 15s",
+                self._host, self._port,
+            )
+            if self._ws and not self._ws.closed:
+                await self._ws.close()
+            raise
         except Exception as err:
             _LOGGER.error("Error during EIO3 handshake: %s", err)
             if self._ws and not self._ws.closed:
@@ -500,7 +513,13 @@ async def async_test_connect(hass: HomeAssistant, host: str, port: int) -> bool:
     ws_timeout = aiohttp.ClientWSTimeout(ws_close=10.0)
 
     try:
-        ws = await session.ws_connect(url, timeout=ws_timeout)
+        ws = await asyncio.wait_for(
+            session.ws_connect(url, timeout=ws_timeout),
+            timeout=15,
+        )
+    except asyncio.TimeoutError:
+        _LOGGER.debug("Test connection to %s:%s timed out after 15s", host, port)
+        return False
     except Exception as err:
         _LOGGER.debug("Test connection failed to open WebSocket: %s", err)
         return False
