@@ -447,21 +447,15 @@ export class HAAdapter {
    * @private
    */
   async _fetchPluginEndpoint(endpoint, data) {
-    const url = this.getVolumioUrl();
-    if (!url) return null;
+    if (!this._configEntryId) return null;
     try {
-      const response = await fetch(`${url}/api/v1/pluginEndpoint`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint, data }),
-      });
-      if (!response.ok) return null;
-      const result = await response.json();
+      const result = await this.call("plugin_endpoint", { endpoint, data });
+      const volumioResponse = result?.response;
       // Outer envelope: getSimilarArtists returns {success:false, error:...}
       // on failure; storyArtist/storyAlbum return {success:true, data:{...}}
       // with the inner success flag carrying the real status.
-      if (!result || result.success === false) return null;
-      return result.data;
+      if (!volumioResponse || volumioResponse.success === false) return null;
+      return volumioResponse.data;
     } catch {
       return null;
     }

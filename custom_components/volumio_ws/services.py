@@ -46,6 +46,8 @@ SERVICE_SAVE_QUEUE_TO_PLAYLIST = "save_queue_to_playlist"
 SERVICE_FAVORITES_LIST = "favorites_list"
 SERVICE_FAVORITES_ADD = "favorites_add"
 SERVICE_FAVORITES_REMOVE = "favorites_remove"
+# Plugin endpoint (REST proxy)
+SERVICE_PLUGIN_ENDPOINT = "plugin_endpoint"
 
 # ── Field constants ──────────────────────────────────────────────────
 ATTR_CONFIG_ENTRY_ID = "config_entry_id"
@@ -61,6 +63,8 @@ ATTR_FROM_INDEX = "from_index"
 ATTR_TO_INDEX = "to_index"
 ATTR_NAME = "name"
 ATTR_TYPE = "type"
+ATTR_ENDPOINT = "endpoint"
+ATTR_DATA = "data"
 
 # ── Schemas ──────────────────────────────────────────────────────────
 # Server-side validation; services.yaml handles the UI side.
@@ -227,6 +231,15 @@ SERVICE_FAVORITES_REMOVE_SCHEMA = vol.Schema(
         vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
         vol.Required(ATTR_URI): cv.string,
         vol.Optional(ATTR_SERVICE): cv.string,
+    }
+)
+
+# Plugin endpoint (generic REST proxy)
+SERVICE_PLUGIN_ENDPOINT_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
+        vol.Required(ATTR_ENDPOINT): cv.string,
+        vol.Required(ATTR_DATA): dict,
     }
 )
 
@@ -582,6 +595,17 @@ async def _async_handle_favorites_remove(
     return None
 
 
+# Plugin endpoint
+async def _async_handle_plugin_endpoint(hass, call):
+    coordinator = _get_coordinator(hass, call)
+    endpoint: str = call.data[ATTR_ENDPOINT]
+    data: dict = call.data[ATTR_DATA]
+    result = await coordinator.async_plugin_endpoint(endpoint, data)
+    if call.return_response:
+        return result if isinstance(result, dict) else {"success": False, "error": "unknown"}
+    return None
+
+
 # ── Registration ─────────────────────────────────────────────────────
 
 @callback
@@ -661,6 +685,9 @@ def register_services(hass: HomeAssistant) -> None:
 
     async def handle_favorites_remove(call: ServiceCall) -> ServiceResponse:
         return await _async_handle_favorites_remove(hass, call)
+
+    async def handle_plugin_endpoint(call: ServiceCall) -> ServiceResponse:
+        return await _async_handle_plugin_endpoint(hass, call)
 
     # -- registrations ------------------------------------------------
 
@@ -820,6 +847,15 @@ def register_services(hass: HomeAssistant) -> None:
         SERVICE_FAVORITES_REMOVE,
         handle_favorites_remove,
         schema=SERVICE_FAVORITES_REMOVE_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    # Plugin endpoint (REST proxy)
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_PLUGIN_ENDPOINT,
+        handle_plugin_endpoint,
+        schema=SERVICE_PLUGIN_ENDPOINT_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
 

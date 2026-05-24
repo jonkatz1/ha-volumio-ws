@@ -538,3 +538,34 @@ favorites_remove:
       example: "qobuz"
       selector:
         text:
+
+# ── Plugin endpoint (REST proxy) ────────────────────────────────────
+
+plugin_endpoint:
+  name: Plugin Endpoint
+  description: >-
+    Generic REST proxy for Volumio's POST /api/v1/pluginEndpoint gateway.
+    Used by the panel to fetch artist bio, album story, album credits,
+    and similar artists via HA's backend (avoids HTTPS mixed-content
+    blocks when HA is served over HTTPS).
+  fields:
+    config_entry_id:
+      name: Volumio Device
+      description: The Volumio device.
+      required: true
+      selector:
+        config_entry:
+          integration: volumio_ws
+    endpoint:
+      name: Endpoint
+      description: Plugin endpoint name (e.g. "metavolumio", "getSimilarArtists").
+      required: true
+      example: "metavolumio"
+      selector:
+        text:
+    data:
+      name: Data
+      description: Endpoint-specific payload object.
+      required: true
+      selector:
+        object:

@@ -7,7 +7,9 @@ import logging
 from collections import deque
 from typing import Any, Callable
 
+import aiohttp
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     DOMAIN,
@@ -715,3 +717,34 @@ class VolumioWebSocketCoordinator:
         if not sent:
             return {"success": False, "command": "removeFromFavourites", "error": "not_connected"}
         return {"success": True, "command": "removeFromFavourites"}
+
+    # ── REST helpers ─────────────────────────────────────────
+
+    async def async_plugin_endpoint(self, endpoint: str, data: dict) -> dict:
+        """Proxy Volumio's POST /api/v1/pluginEndpoint REST call.
+
+        Used by the panel to fetch artist bio, album story, album credits,
+        and similar-artists data. Routed through HA's backend so the
+        browser doesn't have to make HTTP calls from an HTTPS-served panel
+        (mixed content blocked by browsers).
+
+        Returns Volumio's raw JSON response on success, or
+        {"success": False, "error": "..."} on failure.
+        """
+        url = f"{self.base_url}/api/v1/pluginEndpoint"
+        session = async_get_clientsession(self.hass)
+        try:
+            async with session.post(
+                url,
+                json={"endpoint": endpoint, "data": data},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    return {"success": False, "error": f"HTTP {resp.status}"}
+                return await resp.json()
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Timeout calling pluginEndpoint %s", endpoint)
+            return {"success": False, "error": "timeout"}
+        except Exception as err:
+            _LOGGER.warning("pluginEndpoint %s failed: %s", endpoint, err)
+            return {"success": False, "error": str(err)}
