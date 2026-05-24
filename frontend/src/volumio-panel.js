@@ -1336,6 +1336,22 @@ class VolumioPanel extends LitElement {
           if (prev.uri) {
             this._loadBrowseItems(prev.uri);
           }
+        } else if (prev.view === "playlist-detail") {
+          // Defensive: no trail-push site currently uses view:
+          // "playlist-detail", but if one is added later (e.g. clicking
+          // an artist from inside playlist-detail), this branch ensures
+          // Back navigation restores the playlist instead of dumping the
+          // user to browse with a cleared trail. Mirror of T43's
+          // album-detail branch.
+          this._activeView = "playlist-detail";
+          this._browseContext = {
+            title: prev.title || "",
+            uri: prev.uri || "",
+            service: prev.service || "",
+          };
+          if (prev.uri) {
+            this._loadBrowseItems(prev.uri);
+          }
         } else if (prev.view === "now-playing") {
           this._activeView = "now-playing";
           this._searchTrail = [];
