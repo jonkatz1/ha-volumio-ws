@@ -1,6 +1,6 @@
 # LitGUI for Volumio
 
-A custom Home Assistant integration that brings Volumio's full feature set into your HA sidebar — real-time WebSocket connection, rich panel UI, and deep automation support.
+A custom Home Assistant integration that brings Volumio's full feature set into your HA sidebar. Real-time WebSocket connection, rich panel UI, and deep automation support.
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/HA-2024.7%2B-blue.svg)](https://www.home-assistant.io/)
