@@ -72,35 +72,35 @@ ATTR_DATA = "data"
 # -- Search --
 SERVICE_SEARCH_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_QUERY): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_QUERY): vol.All(cv.string, vol.Length(min=1)),
     }
 )
 
 SERVICE_BROWSE_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
         vol.Optional(ATTR_URI, default=""): cv.string,
     }
 )
 
 SERVICE_GET_BROWSE_SOURCES_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
     }
 )
 
 # -- Queue --
 SERVICE_QUEUE_GET_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
     }
 )
 
 SERVICE_QUEUE_ADD_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_URI): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_URI): vol.All(cv.string, vol.Length(min=1)),
         vol.Optional(ATTR_TITLE): cv.string,
         vol.Optional(ATTR_SERVICE): cv.string,
         vol.Optional(ATTR_ALBUM): cv.string,
@@ -111,36 +111,36 @@ SERVICE_QUEUE_ADD_SCHEMA = vol.Schema(
 
 SERVICE_QUEUE_REMOVE_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_INDEX): vol.Coerce(int),
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_INDEX): vol.All(vol.Coerce(int), vol.Range(min=0)),
     }
 )
 
 SERVICE_QUEUE_MOVE_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_FROM_INDEX): vol.Coerce(int),
-        vol.Required(ATTR_TO_INDEX): vol.Coerce(int),
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_FROM_INDEX): vol.All(vol.Coerce(int), vol.Range(min=0)),
+        vol.Required(ATTR_TO_INDEX): vol.All(vol.Coerce(int), vol.Range(min=0)),
     }
 )
 
 SERVICE_QUEUE_CLEAR_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
     }
 )
 
 SERVICE_QUEUE_PLAY_INDEX_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_INDEX): vol.Coerce(int),
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_INDEX): vol.All(vol.Coerce(int), vol.Range(min=0)),
     }
 )
 
 SERVICE_REPLACE_AND_PLAY_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_URI): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_URI): vol.All(cv.string, vol.Length(min=1)),
         vol.Optional(ATTR_TITLE): cv.string,
         vol.Optional(ATTR_SERVICE): cv.string,
         vol.Optional(ATTR_ALBUM): cv.string,
@@ -153,74 +153,74 @@ SERVICE_REPLACE_AND_PLAY_SCHEMA = vol.Schema(
 # -- Playlist --
 SERVICE_PLAYLIST_LIST_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
     }
 )
 
 SERVICE_PLAYLIST_CREATE_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_NAME): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_NAME): vol.All(cv.string, vol.Length(min=1)),
     }
 )
 
 SERVICE_PLAYLIST_DELETE_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_NAME): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_NAME): vol.All(cv.string, vol.Length(min=1)),
     }
 )
 
 SERVICE_PLAYLIST_ADD_TRACK_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_NAME): cv.string,
-        vol.Required(ATTR_URI): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_NAME): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_URI): vol.All(cv.string, vol.Length(min=1)),
         vol.Optional(ATTR_SERVICE): cv.string,
     }
 )
 
 SERVICE_PLAYLIST_REMOVE_TRACK_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_NAME): cv.string,
-        vol.Required(ATTR_URI): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_NAME): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_URI): vol.All(cv.string, vol.Length(min=1)),
         vol.Optional(ATTR_SERVICE): cv.string,
     }
 )
 
 SERVICE_PLAYLIST_PLAY_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_NAME): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_NAME): vol.All(cv.string, vol.Length(min=1)),
     }
 )
 
 SERVICE_PLAYLIST_ENQUEUE_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_NAME): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_NAME): vol.All(cv.string, vol.Length(min=1)),
     }
 )
 
 SERVICE_SAVE_QUEUE_TO_PLAYLIST_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_NAME): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_NAME): vol.All(cv.string, vol.Length(min=1)),
     }
 )
 
 # -- Favorites --
 SERVICE_FAVORITES_LIST_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
     }
 )
 
 SERVICE_FAVORITES_ADD_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_URI): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_URI): vol.All(cv.string, vol.Length(min=1)),
         vol.Optional(ATTR_TITLE): cv.string,
         vol.Optional(ATTR_SERVICE): cv.string,
     }
@@ -228,8 +228,8 @@ SERVICE_FAVORITES_ADD_SCHEMA = vol.Schema(
 
 SERVICE_FAVORITES_REMOVE_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_URI): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_URI): vol.All(cv.string, vol.Length(min=1)),
         vol.Optional(ATTR_SERVICE): cv.string,
     }
 )
@@ -237,8 +237,8 @@ SERVICE_FAVORITES_REMOVE_SCHEMA = vol.Schema(
 # Plugin endpoint (generic REST proxy)
 SERVICE_PLUGIN_ENDPOINT_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Required(ATTR_ENDPOINT): cv.string,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(ATTR_ENDPOINT): vol.All(cv.string, vol.Length(min=1)),
         vol.Required(ATTR_DATA): dict,
     }
 )
@@ -465,7 +465,9 @@ async def _async_handle_playlist_delete(
 ) -> ServiceResponse:
     """Handle the playlist_delete service call."""
     coordinator = _get_coordinator(hass, call)
-    name: str = call.data[ATTR_NAME]
+    name: str = call.data[ATTR_NAME].strip()
+    if not name:
+        raise ServiceValidationError("Playlist name cannot be empty or whitespace")
     result = await coordinator.async_delete_playlist(name)
 
     if call.return_response:
@@ -478,8 +480,12 @@ async def _async_handle_playlist_add_track(
 ) -> ServiceResponse:
     """Handle the playlist_add_track service call."""
     coordinator = _get_coordinator(hass, call)
-    name: str = call.data[ATTR_NAME]
-    uri: str = call.data[ATTR_URI]
+    name: str = call.data[ATTR_NAME].strip()
+    uri: str = call.data[ATTR_URI].strip()
+    if not name:
+        raise ServiceValidationError("Playlist name cannot be empty or whitespace")
+    if not uri:
+        raise ServiceValidationError("URI cannot be empty or whitespace")
     service: str | None = call.data.get(ATTR_SERVICE)
     result = await coordinator.async_add_to_playlist(name, uri, service)
 
@@ -493,8 +499,12 @@ async def _async_handle_playlist_remove_track(
 ) -> ServiceResponse:
     """Handle the playlist_remove_track service call."""
     coordinator = _get_coordinator(hass, call)
-    name: str = call.data[ATTR_NAME]
-    uri: str = call.data[ATTR_URI]
+    name: str = call.data[ATTR_NAME].strip()
+    uri: str = call.data[ATTR_URI].strip()
+    if not name:
+        raise ServiceValidationError("Playlist name cannot be empty or whitespace")
+    if not uri:
+        raise ServiceValidationError("URI cannot be empty or whitespace")
     service: str | None = call.data.get(ATTR_SERVICE)
     result = await coordinator.async_remove_from_playlist(name, uri, service)
 
@@ -508,7 +518,9 @@ async def _async_handle_playlist_play(
 ) -> ServiceResponse:
     """Handle the playlist_play service call."""
     coordinator = _get_coordinator(hass, call)
-    name: str = call.data[ATTR_NAME]
+    name: str = call.data[ATTR_NAME].strip()
+    if not name:
+        raise ServiceValidationError("Playlist name cannot be empty or whitespace")
     result = await coordinator.async_play_playlist(name)
 
     if call.return_response:
@@ -521,7 +533,9 @@ async def _async_handle_playlist_enqueue(
 ) -> ServiceResponse:
     """Handle the playlist_enqueue service call."""
     coordinator = _get_coordinator(hass, call)
-    name: str = call.data[ATTR_NAME]
+    name: str = call.data[ATTR_NAME].strip()
+    if not name:
+        raise ServiceValidationError("Playlist name cannot be empty or whitespace")
     result = await coordinator.async_enqueue_playlist(name)
 
     if call.return_response:
@@ -538,7 +552,9 @@ async def _async_handle_save_queue_to_playlist(
     current queue server-side and saves it atomically as a playlist.
     """
     coordinator = _get_coordinator(hass, call)
-    name: str = call.data[ATTR_NAME]
+    name: str = call.data[ATTR_NAME].strip()
+    if not name:
+        raise ServiceValidationError("Playlist name cannot be empty or whitespace")
     result = await coordinator.async_save_queue_to_playlist(name)
 
     if call.return_response:
