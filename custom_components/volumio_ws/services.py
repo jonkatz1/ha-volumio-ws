@@ -49,6 +49,12 @@ SERVICE_FAVORITES_REMOVE = "favorites_remove"
 # Plugin endpoint (REST proxy)
 SERVICE_PLUGIN_ENDPOINT = "plugin_endpoint"
 
+# Endpoints the panel actually uses. Restricts the plugin_endpoint service
+# (a generic REST proxy) to known-safe metadata read endpoints. Non-admin
+# users calling this service from automations or developer tools cannot
+# proxy arbitrary endpoints to Volumio's /api/v1/pluginEndpoint gateway.
+ALLOWED_PLUGIN_ENDPOINTS = frozenset({"metavolumio", "getSimilarArtists"})
+
 # ── Field constants ──────────────────────────────────────────────────
 ATTR_CONFIG_ENTRY_ID = "config_entry_id"
 ATTR_QUERY = "query"
@@ -615,6 +621,10 @@ async def _async_handle_favorites_remove(
 async def _async_handle_plugin_endpoint(hass, call):
     coordinator = _get_coordinator(hass, call)
     endpoint: str = call.data[ATTR_ENDPOINT]
+    if endpoint not in ALLOWED_PLUGIN_ENDPOINTS:
+        raise ServiceValidationError(
+            f"plugin_endpoint '{endpoint}' is not allowed"
+        )
     data: dict = call.data[ATTR_DATA]
     result = await coordinator.async_plugin_endpoint(endpoint, data)
     if call.return_response:
