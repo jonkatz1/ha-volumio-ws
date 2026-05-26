@@ -13,6 +13,7 @@ import { LitElement, html, css } from "lit";
 import { sharedStyles } from "./styles/shared-styles.js";
 import { detectQuality } from "./utils/quality-utils.js";
 import { resolveArt } from "./utils/format-utils.js";
+import { safeGet, safeSet, safeRemove } from "./utils/storage-utils.js";
 import { HAAdapter } from "./adapters/ha-adapter.js";
 import "./components/top-bar.js";
 import "./components/left-nav.js";
@@ -623,15 +624,15 @@ class VolumioPanel extends LitElement {
     this._favoritesLoading = false;
     // History state — corrupt-data resilient (issue #40)
     try {
-      const parsed = JSON.parse(localStorage.getItem("volumio-ws-history") || "[]");
+      const parsed = JSON.parse(safeGet("volumio-ws-history", "[]"));
       this._history = Array.isArray(parsed) ? parsed : [];
     } catch {
       this._history = [];
     }
     // Settings state
-    this._settingClickAction = localStorage.getItem("volumio-default-click") || "play_now";
-    this._settingQueueThumbnails = localStorage.getItem("volumio-queue-thumbnails") !== "false";
-    this._settingBrowseViewMode = localStorage.getItem("volumio-browse-view-mode") || "grid";
+    this._settingClickAction = safeGet("volumio-default-click", "play_now");
+    this._settingQueueThumbnails = safeGet("volumio-queue-thumbnails") !== "false";
+    this._settingBrowseViewMode = safeGet("volumio-browse-view-mode", "grid");
   }
 
   connectedCallback() {
@@ -2061,19 +2062,17 @@ class VolumioPanel extends LitElement {
     }
 
     this._history = history;
-    try {
-      localStorage.setItem("volumio-ws-history", JSON.stringify(history));
-    } catch (err) {
-      // localStorage may be full — trim and retry
+    if (!safeSet("volumio-ws-history", JSON.stringify(history))) {
+      // localStorage may be full — trim and retry (silent on second failure)
       history = history.slice(0, 250);
       this._history = history;
-      localStorage.setItem("volumio-ws-history", JSON.stringify(history));
+      safeSet("volumio-ws-history", JSON.stringify(history));
     }
   }
 
   _onHistoryClear() {
     this._history = [];
-    localStorage.removeItem("volumio-ws-history");
+    safeRemove("volumio-ws-history");
     this._showToast("History cleared");
   }
 
@@ -2084,15 +2083,15 @@ class VolumioPanel extends LitElement {
     switch (key) {
       case "clickAction":
         this._settingClickAction = value;
-        localStorage.setItem("volumio-default-click", value);
+        safeSet("volumio-default-click", value);
         break;
       case "queueThumbnails":
         this._settingQueueThumbnails = value;
-        localStorage.setItem("volumio-queue-thumbnails", String(value));
+        safeSet("volumio-queue-thumbnails", String(value));
         break;
       case "browseViewMode":
         this._settingBrowseViewMode = value;
-        localStorage.setItem("volumio-browse-view-mode", value);
+        safeSet("volumio-browse-view-mode", value);
         break;
     }
   }

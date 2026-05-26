@@ -15,6 +15,7 @@
  *   volumio-back: {}
  */
 import { LitElement, html, css } from "lit";
+import { safeGet, safeSet } from "../utils/storage-utils.js";
 
 const TABS = [
   { key: "now-playing", label: "Now Playing" },
@@ -350,7 +351,7 @@ class VolumioTopBar extends LitElement {
     // Resilient against corrupt/quota-exceeded localStorage (issue #40)
     let recent = [];
     try {
-      recent = JSON.parse(localStorage.getItem("volumio-recent-searches") || "[]");
+      recent = JSON.parse(safeGet("volumio-recent-searches", "[]"));
       if (!Array.isArray(recent)) recent = [];
     } catch {
       recent = [];
@@ -612,7 +613,7 @@ class VolumioTopBar extends LitElement {
   _executeSearch(query) {
     // Save to recent searches
     this._recentSearches = [query, ...this._recentSearches.filter(q => q !== query)].slice(0, 10);
-    localStorage.setItem("volumio-recent-searches", JSON.stringify(this._recentSearches));
+    safeSet("volumio-recent-searches", JSON.stringify(this._recentSearches));
 
     this.dispatchEvent(new CustomEvent("volumio-search", {
       detail: { query },

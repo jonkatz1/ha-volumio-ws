@@ -15,6 +15,7 @@
  */
 import { LitElement, html, css } from "lit";
 import { resolveArt } from "../utils/format-utils.js";
+import { safeGet, safeSet } from "../utils/storage-utils.js";
 import { inferTrackQuality } from "../utils/quality-utils.js";
 import "./album-card.js";
 import "./track-card.js";
@@ -275,7 +276,7 @@ class VolumioBrowseList extends LitElement {
   constructor() {
     super();
     this.items = [];
-    this.viewMode = localStorage.getItem("volumio-browse-view") || "grid";
+    this.viewMode = safeGet("volumio-browse-view", "grid");
     this.loading = false;
     this.currentUri = "";
     this.volumioUrl = "";
@@ -428,7 +429,7 @@ class VolumioBrowseList extends LitElement {
 
   _setViewMode(mode) {
     this.viewMode = mode;
-    localStorage.setItem("volumio-browse-view", mode);
+    safeSet("volumio-browse-view", mode);
     this.dispatchEvent(new CustomEvent("volumio-view-mode-change", {
       detail: { mode },
       bubbles: true, composed: true,
