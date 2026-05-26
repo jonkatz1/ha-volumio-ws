@@ -47,6 +47,7 @@ class VolumioAlbumDetail extends LitElement {
       currentUri: { type: String, attribute: "current-uri" },
       quality: { type: Object },
       volumioUrl: { type: String, attribute: "volumio-url" },
+      configEntryId: { type: String, attribute: "config-entry-id" },
       story: { type: String },
       credits: { type: Array, attribute: false },
       storyLoading: { type: Boolean, attribute: "story-loading" },
@@ -481,7 +482,7 @@ class VolumioAlbumDetail extends LitElement {
       <div class="album-header">
         <div class="album-art-container">
           ${this.albumArt
-            ? html`<img src="${resolveArt(this.albumArt, this.volumioUrl)}" alt="${this.albumTitle}" @error=${this._onArtError} />`
+            ? html`<img src="${resolveArt(this.albumArt, this.volumioUrl, this.configEntryId)}" alt="${this.albumTitle}" @error=${this._onArtError} />`
             : html`<div class="album-art-placeholder">
                 <ha-icon icon="mdi:album"></ha-icon>
               </div>`}
@@ -534,7 +535,7 @@ class VolumioAlbumDetail extends LitElement {
             <span></span>
           </div>
           ${this.tracks.map((track, i) => {
-            const art = resolveArt(track.albumart || this.albumArt, this.volumioUrl);
+            const art = resolveArt(track.albumart || this.albumArt, this.volumioUrl, this.configEntryId);
             const quality = inferTrackQuality(track);
             return html`
               <volumio-track-card

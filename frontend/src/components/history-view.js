@@ -20,6 +20,7 @@ class VolumioHistoryView extends LitElement {
       history: { type: Array },
       currentUri: { type: String, attribute: "current-uri" },
       volumioUrl: { type: String, attribute: "volumio-url" },
+      configEntryId: { type: String, attribute: "config-entry-id" },
     };
   }
 
@@ -271,7 +272,7 @@ class VolumioHistoryView extends LitElement {
         <div class="date-group">
           <div class="date-label">${group.label}</div>
           ${group.items.map(item => {
-            const art = resolveArt(item.albumart, this.volumioUrl);
+            const art = resolveArt(item.albumart, this.volumioUrl, this.configEntryId);
             const isPlaying = item.uri === this.currentUri;
             const metaParts = [item.artist, item.album].filter(Boolean).join(" — ");
             const timeStr = this._formatTime(item.timestamp);

@@ -29,6 +29,7 @@ class VolumioBrowseSourceGrid extends LitElement {
     return {
       sources: { type: Array },
       volumioUrl: { type: String, attribute: "volumio-url" },
+      configEntryId: { type: String, attribute: "config-entry-id" },
     };
   }
 
@@ -150,7 +151,7 @@ class VolumioBrowseSourceGrid extends LitElement {
     const icon = SOURCE_ICON_MAP[source.plugin_name]
       || SOURCE_ICON_MAP[source.plugin_type]
       || "mdi:music-box";
-    const art = resolveArt(source.albumart || source.icon, this.volumioUrl);
+    const art = resolveArt(source.albumart || source.icon, this.volumioUrl, this.configEntryId);
 
     return html`
       <div

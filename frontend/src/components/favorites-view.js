@@ -40,6 +40,7 @@ class VolumioFavoritesView extends LitElement {
       loading: { type: Boolean },
       currentUri: { type: String, attribute: "current-uri" },
       volumioUrl: { type: String, attribute: "volumio-url" },
+      configEntryId: { type: String, attribute: "config-entry-id" },
     };
   }
 
@@ -303,7 +304,7 @@ class VolumioFavoritesView extends LitElement {
         : html`
           <div class="favorites-list">
             ${this.items.map(item => {
-              const art = resolveArt(item.albumart, this.volumioUrl);
+              const art = resolveArt(item.albumart, this.volumioUrl, this.configEntryId);
               const isPlaying = item.uri === this.currentUri;
               const metaParts = [item.artist, item.album].filter(Boolean).join(" — ");
               return html`

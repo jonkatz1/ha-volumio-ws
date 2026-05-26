@@ -33,6 +33,7 @@ class VolumioBrowseList extends LitElement {
       loading: { type: Boolean },
       currentUri: { type: String, attribute: "current-uri" },
       volumioUrl: { type: String, attribute: "volumio-url" },
+      configEntryId: { type: String, attribute: "config-entry-id" },
       _displayCount: { type: Number, state: true },
     };
   }
@@ -349,7 +350,7 @@ class VolumioBrowseList extends LitElement {
     return html`
       <div class="browse-grid">
         ${items.map(item => {
-          const art = resolveArt(item.albumart, this.volumioUrl);
+          const art = resolveArt(item.albumart, this.volumioUrl, this.configEntryId);
           const letter = this._getItemLetter(item);
           return html`
             <volumio-album-card
@@ -391,7 +392,7 @@ class VolumioBrowseList extends LitElement {
           // item.icon is a CSS class (e.g. "fa fa-music"), not a URL —
           // never feed it to resolveArt. Fall back to nothing if albumart
           // is missing; the row stays clean.
-          const art = resolveArt(item.albumart, this.volumioUrl);
+          const art = resolveArt(item.albumart, this.volumioUrl, this.configEntryId);
           const quality = inferTrackQuality(item);
           const letter = this._getItemLetter(item);
           return html`

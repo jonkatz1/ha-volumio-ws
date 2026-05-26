@@ -758,7 +758,7 @@ class VolumioPanel extends LitElement {
   render() {
     const s = this._adapter.getState();
     const qualityInfo = this._getQualityInfo();
-    const artUrl = resolveArt(s.albumArt, "");
+    const artUrl = resolveArt(s.albumArt, "", this._activeDeviceId);
     const volumioUrl = this._adapter.getVolumioUrl();
 
     const navSources = this._getNavSources();
@@ -964,7 +964,7 @@ class VolumioPanel extends LitElement {
                   ${this._settingQueueThumbnails ? html`
                     <div class="qi-art">
                       ${item.albumart
-                        ? html`<img src="${resolveArt(item.albumart, volumioUrl)}" alt="" loading="lazy" />`
+                        ? html`<img src="${resolveArt(item.albumart, volumioUrl, this._activeDeviceId)}" alt="" loading="lazy" />`
                         : html`<ha-icon icon="mdi:music-note"></ha-icon>`}
                     </div>
                   ` : ""}
@@ -1035,6 +1035,7 @@ class VolumioPanel extends LitElement {
         <volumio-browse-source-grid
           .sources=${this._browseSources}
           volumio-url="${volumioUrl}"
+          config-entry-id="${this._activeDeviceId}"
           @volumio-source-select=${this._onSourceSelect}
         ></volumio-browse-source-grid>
       `;
@@ -1047,6 +1048,7 @@ class VolumioPanel extends LitElement {
         ?loading=${this._browseLoading}
         current-uri="${s.uri}"
         volumio-url="${volumioUrl}"
+        config-entry-id="${this._activeDeviceId}"
         @volumio-item-click=${this._onBrowseItemClick}
         @volumio-item-play=${this._onBrowseItemPlay}
       ></volumio-browse-list>
@@ -1066,6 +1068,7 @@ class VolumioPanel extends LitElement {
         ?loading=${this._browseLoading}
         current-uri="${s.uri}"
         volumio-url="${volumioUrl}"
+        config-entry-id="${this._activeDeviceId}"
         .story=${this._albumStory}
         .credits=${this._albumCredits}
         ?story-loading=${this._metadataLoading.story}
@@ -1087,6 +1090,7 @@ class VolumioPanel extends LitElement {
         .items=${this._browseItems}
         ?loading=${this._browseLoading}
         volumio-url="${volumioUrl}"
+        config-entry-id="${this._activeDeviceId}"
         .bio=${this._artistBio}
         .similarArtists=${this._similarArtists}
         ?bio-loading=${this._metadataLoading.bio}
@@ -1105,6 +1109,7 @@ class VolumioPanel extends LitElement {
         ?loading=${this._searchLoading}
         query="${this._searchQuery}"
         volumio-url="${volumioUrl}"
+        config-entry-id="${this._activeDeviceId}"
         current-uri="${s.uri}"
         @volumio-card-click=${this._onBrowseItemClick}
         @volumio-card-play=${this._onBrowseItemPlay}
@@ -1144,6 +1149,7 @@ class VolumioPanel extends LitElement {
         ?loading=${this._playlistLoading}
         current-uri="${s.uri}"
         volumio-url="${volumioUrl}"
+        config-entry-id="${this._activeDeviceId}"
         @volumio-track-click=${this._onTrackPlay}
       ></volumio-playlist-detail>
     `;
@@ -1158,6 +1164,7 @@ class VolumioPanel extends LitElement {
         ?loading=${this._favoritesLoading}
         current-uri="${s.uri}"
         volumio-url="${volumioUrl}"
+        config-entry-id="${this._activeDeviceId}"
         @volumio-track-click=${this._onTrackPlay}
       ></volumio-favorites-view>
     `;
@@ -1171,6 +1178,7 @@ class VolumioPanel extends LitElement {
         .history=${this._history}
         current-uri="${s.uri}"
         volumio-url="${volumioUrl}"
+        config-entry-id="${this._activeDeviceId}"
         @volumio-track-click=${this._onTrackPlay}
       ></volumio-history-view>
     `;
@@ -1866,7 +1874,7 @@ class VolumioPanel extends LitElement {
         this._browseContext = {
           title: albumTitle,
           artist: albumArtist,
-          albumart: resolveArt(info.albumart || "", volumioUrl),
+          albumart: resolveArt(info.albumart || "", volumioUrl, this._activeDeviceId),
           uri: info.uri || uri,
           service: info.service || "",
         };

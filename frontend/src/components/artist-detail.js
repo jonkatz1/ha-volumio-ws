@@ -29,6 +29,7 @@ class VolumioArtistDetail extends LitElement {
       items: { type: Array },
       loading: { type: Boolean },
       volumioUrl: { type: String, attribute: "volumio-url" },
+      configEntryId: { type: String, attribute: "config-entry-id" },
       bio: { type: String },
       similarArtists: { type: Array, attribute: false },
       bioLoading: { type: Boolean, attribute: "bio-loading" },
@@ -272,7 +273,7 @@ class VolumioArtistDetail extends LitElement {
           ? html`
             <div class="albums-grid">
               ${this.items.map(item => {
-                const art = resolveArt(item.albumart || item.icon, this.volumioUrl);
+                const art = resolveArt(item.albumart || item.icon, this.volumioUrl, this.configEntryId);
                 return html`
                   <volumio-album-card
                     title="${item.title || item.name || ""}"
@@ -354,7 +355,7 @@ class VolumioArtistDetail extends LitElement {
         <div class="section-title">Similar Artists</div>
         <div class="similar-grid">
           ${this.similarArtists.map(sim => {
-            const art = resolveArt(sim.albumart, this.volumioUrl);
+            const art = resolveArt(sim.albumart, this.volumioUrl, this.configEntryId);
             return html`
               <div
                 class="similar-card"

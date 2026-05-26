@@ -30,6 +30,7 @@ class VolumioPlaylistDetail extends LitElement {
       loading: { type: Boolean },
       currentUri: { type: String, attribute: "current-uri" },
       volumioUrl: { type: String, attribute: "volumio-url" },
+      configEntryId: { type: String, attribute: "config-entry-id" },
       _confirmDelete: { type: Boolean, state: true },
     };
   }
@@ -431,7 +432,7 @@ class VolumioPlaylistDetail extends LitElement {
               <span></span>
             </div>
             ${this.tracks.map((track, i) => {
-              const art = resolveArt(track.albumart || track.icon, this.volumioUrl);
+              const art = resolveArt(track.albumart || track.icon, this.volumioUrl, this.configEntryId);
               return html`
                 <div class="track-row-wrap">
                   <volumio-track-card

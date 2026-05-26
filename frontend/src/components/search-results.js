@@ -30,6 +30,7 @@ class VolumioSearchResults extends LitElement {
       loading: { type: Boolean },
       query: { type: String },
       volumioUrl: { type: String, attribute: "volumio-url" },
+      configEntryId: { type: String, attribute: "config-entry-id" },
       currentUri: { type: String, attribute: "current-uri" },
       _expandedSections: { type: Object, state: true },
     };
@@ -401,7 +402,7 @@ class VolumioSearchResults extends LitElement {
     return html`
       <div class="items-grid">
         ${items.map(item => {
-          const art = resolveArt(item.albumart || item.icon, this.volumioUrl);
+          const art = resolveArt(item.albumart || item.icon, this.volumioUrl, this.configEntryId);
           return html`
             <volumio-album-card
               title="${item.title || item.name || ""}"
@@ -423,7 +424,7 @@ class VolumioSearchResults extends LitElement {
     return html`
       <div class="items-list">
         ${items.map((item, i) => {
-          const art = resolveArt(item.albumart || item.icon, this.volumioUrl);
+          const art = resolveArt(item.albumart || item.icon, this.volumioUrl, this.configEntryId);
           return html`
             <volumio-track-card
               .index=${i + 1}
