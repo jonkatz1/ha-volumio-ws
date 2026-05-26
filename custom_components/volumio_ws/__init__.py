@@ -100,13 +100,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # Platform forwarding is core — failure here rolls back the entry so HA
+    # retries cleanly. Without this rollback, a failed platform setup would
+    # leave the coordinator connected and stored in hass.data with no
+    # corresponding loaded entry.
+    try:
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    except Exception:
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+        await coordinator.async_disconnect()
+        raise
 
-    # Register the sidebar panel if this entry has it enabled (default: True).
-    # Panel is domain-level — first entry with enable_panel=True wins the
-    # panel config. The device selector inside the panel handles multi-device.
+    # Panel is best-effort — failure here must NOT fail the setup. Entities
+    # and services are the contract; the panel is opt-in UX. If registration
+    # breaks for environment-specific reasons, we log and continue so the
+    # user still gets a working integration.
     if entry.options.get("enable_panel", True):
-        await _async_register_panel(hass, entry)
+        try:
+            await _async_register_panel(hass, entry)
+        except Exception as err:
+            _LOGGER.warning("Failed to register sidebar panel: %s", err)
 
     # Listen for option changes (panel toggle)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
@@ -220,14 +233,20 @@ async def _async_update_listener(
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a Volumio WebSocket config entry."""
-    coordinator: VolumioWebSocketCoordinator = hass.data[DOMAIN][entry.entry_id]
-    await coordinator.async_disconnect()
+    """Unload a Volumio WebSocket config entry.
 
+    Unload order: platforms first, coordinator disconnect after. Platform
+    teardown (async_will_remove_from_hass on entities) may still need the
+    coordinator. Disconnecting first would leave platforms operating against
+    a dead transport during their teardown. If platform unload fails, we
+    keep the coordinator alive so HA can retry — disconnecting in that case
+    would leave HA in a broken state (entry still loaded, transport dead).
+    """
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+        coordinator: VolumioWebSocketCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        await coordinator.async_disconnect()
 
         # Remove panel if no remaining entries have it enabled
         if not _any_entry_has_panel_enabled(hass):

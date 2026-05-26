@@ -8,7 +8,7 @@ A custom Home Assistant integration that brings Volumio's full feature set into 
 
 ## What It Does
 
-The built-in HA Volumio integration polls every 10 seconds and offers limited controls. LitGUI replaces that with a persistent WebSocket connection for instant state updates, a full sidebar panel for browsing and playback, and 21 services for automations.
+The built-in HA Volumio integration polls every 10 seconds and offers limited controls. LitGUI replaces that with a persistent WebSocket connection for instant state updates, a full sidebar panel for browsing and playback, and 22 services for automations.
 
 It runs alongside the built-in integration (different domain: `volumio_ws`) so you can migrate at your own pace.
 
@@ -44,7 +44,7 @@ It runs alongside the built-in integration (different domain: `volumio_ws`) so y
 - Track type / codec (e.g., "flac")
 - Channels (e.g., "2")
 
-**Services for Automations** — 21 services covering:
+**Services for Automations** — 22 services covering:
 - Library: search, browse, get browse sources
 - Queue: get, add, remove, move, clear, play by index, replace and play, save to playlist
 - Playlists: list, create, delete, add track, remove track, play, enqueue
