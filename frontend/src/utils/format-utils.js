@@ -30,23 +30,83 @@ export function formatTimeMs(ms) {
 }
 
 /**
- * Resolve a Volumio albumart URL.
- * Relative paths get the Volumio base URL prepended.
- * Rejects javascript:/data:/etc URI schemes from either input.
- * @param {string} albumart - raw albumart path from Volumio
- * @param {string} volumioUrl - base Volumio URL (e.g. "http://192.168.1.100:3000")
+ * Base64url-encode an arbitrary string for safe embedding in a URL.
+ *
+ * HA's security_filter middleware rejects URLs containing path-traversal
+ * patterns like ".." even inside query string values. Volumio art paths
+ * legitimately contain these patterns (artist names like "Fred again..",
+ * embedded library paths like "/NAS/..."). Base64url uses only
+ * A-Z, a-z, 0-9, -, _ and is filter-safe.
+ *
+ * @param {string} str
  * @returns {string}
  */
-export function resolveArt(albumart, volumioUrl) {
-  if (!albumart) return "";
-  // Reject if albumart looks absolute but isn't http(s)
-  if (/^[a-z][a-z0-9+.-]*:/i.test(albumart)) {
-    return /^https?:\/\//i.test(albumart) ? albumart : "";
+function _b64urlEncode(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) {
+    bin += String.fromCharCode(bytes[i]);
   }
-  // HA-internal paths (e.g. /api/media_player_proxy/...) are served by
-  // Home Assistant itself — never prepend the Volumio host to them.
+  return btoa(bin)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/**
+ * Resolve a Volumio albumart URL.
+ *
+ * When a configEntryId is provided, Volumio-hosted art is rewritten to flow
+ * through HA's backend proxy (/api/volumio_ws/art) so it loads under HTTPS
+ * without mixed-content blocking. CDN URLs (https://) and HA proxy URLs
+ * (/api/...) pass through unchanged.
+ *
+ * In standalone mode (no configEntryId), falls back to the prior behavior:
+ * relative paths get volumioUrl prepended; absolute URLs returned as-is.
+ *
+ * @param {string} albumart - raw albumart value from Volumio
+ * @param {string} volumioUrl - base Volumio URL (e.g. "http://192.168.1.100:3000")
+ * @param {string} [configEntryId] - HA config entry ID for the active device;
+ *   when present, enables the HA proxy path
+ * @returns {string}
+ */
+export function resolveArt(albumart, volumioUrl, configEntryId) {
+  if (!albumart) return "";
+
+  // Reject inputs containing whitespace. Volumio paths never contain literal
+  // whitespace (spaces are percent-encoded as %20). Whitespace is a reliable
+  // signal that the caller passed a CSS class string ("fa fa-music") instead
+  // of an art URL — likely from an `albumart || icon` fallback at the call site.
+  if (/\s/.test(albumart)) return "";
+
+  // Reject non-http(s) absolute schemes (javascript:, data:, file:, etc).
+  if (/^[a-z][a-z0-9+.-]*:/i.test(albumart) && !/^https?:\/\//i.test(albumart)) {
+    return "";
+  }
+
+  // HA-internal paths (e.g. /api/media_player_proxy/, /api/volumio_ws/art)
+  // are served by HA itself — pass through.
   if (/^\/api\//.test(albumart)) return albumart;
-  // volumioUrl must be http(s) if provided
+
+  // Absolute https:// — CDN (Qobuz/TIDAL/etc), pass through.
+  if (/^https:\/\//i.test(albumart)) return albumart;
+
+  // Absolute http:// — could be our Volumio host or external.
+  if (/^http:\/\//i.test(albumart)) {
+    if (configEntryId && volumioUrl && albumart.startsWith(volumioUrl)) {
+      const path = albumart.substring(volumioUrl.length);
+      return `/api/volumio_ws/art?entry=${encodeURIComponent(configEntryId)}&path=${_b64urlEncode(path)}`;
+    }
+    // External http or no proxy available — return as-is.
+    return albumart;
+  }
+
+  // Relative path.
+  if (configEntryId) {
+    return `/api/volumio_ws/art?entry=${encodeURIComponent(configEntryId)}&path=${_b64urlEncode(albumart)}`;
+  }
+
+  // Standalone / no proxy — original behavior.
   if (volumioUrl && !/^https?:\/\//i.test(volumioUrl)) return "";
   return volumioUrl ? `${volumioUrl}${albumart}` : albumart;
 }
