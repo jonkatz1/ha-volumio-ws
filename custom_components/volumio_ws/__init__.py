@@ -18,6 +18,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN, CONF_NAME, DEFAULT_PORT, DEFAULT_NAME
+from .art_proxy import async_register_art_proxy
 from .coordinator import VolumioWebSocketCoordinator
 from .services import register_services
 from .ws_api import async_register_ws_api
@@ -71,6 +72,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """
     register_services(hass)
     async_register_ws_api(hass)
+    async_register_art_proxy(hass)
     return True
 
 
