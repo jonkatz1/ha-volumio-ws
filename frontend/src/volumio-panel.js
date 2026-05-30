@@ -2475,6 +2475,14 @@ class VolumioPanel extends LitElement {
       items.push({ separator: true });
       items.push({ key: "go_to_album", label: "Go to Album", icon: "mdi:album" });
       items.push({ key: "go_to_artist", label: "Go to Artist", icon: "mdi:account-music" });
+    } else if (context === "album_card") {
+      items.push({ key: "play", label: "Play", icon: "mdi:play" });
+      items.push({ separator: true });
+      items.push({ key: "add_to_favorites", label: "Add to Favorites", icon: "mdi:heart-outline" });
+      items.push({ key: "add_to_playlist", label: "Add to Playlist", icon: "mdi:playlist-music", submenu: true });
+      items.push({ separator: true });
+      items.push({ key: "go_to_album", label: "Go to Album", icon: "mdi:album" });
+      items.push({ key: "go_to_artist", label: "Go to Artist", icon: "mdi:account-music" });
     } else if (context === "queue") {
       items.push({ key: "play", label: "Play Now", icon: "mdi:play" });
       items.push({ key: "play_next", label: "Play Next", icon: "mdi:skip-next" });
@@ -2636,23 +2644,68 @@ class VolumioPanel extends LitElement {
           break;
 
         case "go_to_album":
-          if (item.album || item.title) {
-            // For mpd local files, the album is reachable via
-            // albums://<artist>/<album>. Use that when we have artist+album.
-            // For services (qobuz/tidal/etc.) we don't have a reliable
-            // album URI — leave the track list empty and just show the
-            // album header. Avoids the "single track" bug where we'd
-            // browse the track URI itself and get one item back.
+          if (item.album || item.title || item.albumUri) {
+            // Four-tier resolution of the album URI:
+            //   1. Item already represents an album (album-card → "album_card",
+            //      album-detail More → "album", type === "album"): item.uri
+            //      IS the album URI.
+            //   2. Service track with albumUri field (queue/favorite/history
+            //      from qobuz/tidal/etc. — Volumio's pushQueue includes
+            //      albumUri on every service track).
+            //   3. mpd track: synthesize albums://<artist>/<album>.
+            //   4. None of the above: skipLoad → header-only display.
             let albumUri = "";
-            if (item.service === "mpd" && item.artist && item.album) {
+            const isAlbumItem =
+              item.context === "album" ||
+              item.context === "album_card" ||
+              item.type === "album";
+            if (isAlbumItem && item.uri) {
+              albumUri = item.uri;
+            } else if (item.albumUri) {
+              albumUri = item.albumUri;
+            } else if (item.service === "mpd" && item.artist && item.album) {
               albumUri = `albums://${encodeURIComponent(item.artist)}/${encodeURIComponent(item.album)}`;
             }
+
+            const albumTitle = item.album || item.title || "";
+            const albumService = item.service || "";
+
+            // Breadcrumb construction:
+            //   In search context (active query or non-empty trail): build a
+            //   fresh searchTrail mirroring _onBrowseItemClick's "album"
+            //   branch. Overwrites any stale _searchTrail (fixes #4).
+            //   Otherwise: pass [] to clear stale _searchTrail, and when the
+            //   item came from an album-grid tile, push it onto _browseStack
+            //   so the breadcrumb shows the album as a tail segment (fixes
+            //   #1). Other contexts (track row, queue, favorite, history)
+            //   leave _browseStack alone — they don't have a meaningful
+            //   parent view in the browse-stack sense.
+            let searchTrail;
+            if (this._searchQuery || this._searchTrail.length > 0) {
+              searchTrail = this._searchTrail.length > 0
+                ? [...this._searchTrail]
+                : [{ title: `Search "${this._searchQuery}"`, uri: "__search__", view: "search" }];
+              if (searchTrail.length === 1 && albumService) {
+                searchTrail.push({ title: serviceLabel(albumService), uri: "__source__", view: "source" });
+              }
+              searchTrail.push({ title: albumTitle, uri: albumUri, view: "album-detail", service: albumService });
+            } else {
+              searchTrail = [];
+              if (item.context === "album_card" && albumUri) {
+                this._browseStack = [
+                  ...this._browseStack,
+                  { uri: albumUri, title: albumTitle },
+                ];
+              }
+            }
+
             this._enterAlbumDetail({
-              title: item.album || item.title,
+              title: albumTitle,
               artist: item.artist || "",
               albumart: item.albumart || "",
               uri: albumUri,
-              service: item.service || "",
+              service: albumService,
+              searchTrail: searchTrail,
               skipLoad: !albumUri,
             });
           }

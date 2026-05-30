@@ -271,7 +271,7 @@ class VolumioAlbumCard extends LitElement {
 
   _fireContextEvent(x, y) {
     this.dispatchEvent(new CustomEvent("volumio-context-menu", {
-      detail: { ...this._getItemData(), x, y, context: "album" },
+      detail: { ...this._getItemData(), x, y, context: "album_card" },
       bubbles: true, composed: true,
     }));
   }
