@@ -89,7 +89,7 @@ class VolumioPlayerBar extends LitElement {
         cursor: pointer;
       }
 
-      .art-placeholder ha-icon {
+      .art-placeholder litgui-icon {
         --mdc-icon-size: 28px;
         color: var(--secondary-text-color);
       }
@@ -140,7 +140,7 @@ class VolumioPlayerBar extends LitElement {
         flex: 0 0 auto;
       }
 
-      .fav-btn ha-icon {
+      .fav-btn litgui-icon {
         --mdc-icon-size: 20px;
       }
 
@@ -188,7 +188,7 @@ class VolumioPlayerBar extends LitElement {
         height: 42px;
       }
 
-      .ctrl-btn.play-pause ha-icon {
+      .ctrl-btn.play-pause litgui-icon {
         --mdc-icon-size: 28px;
       }
 
@@ -196,7 +196,7 @@ class VolumioPlayerBar extends LitElement {
         color: var(--primary-color, #03a9f4);
       }
 
-      .ctrl-btn ha-icon {
+      .ctrl-btn litgui-icon {
         --mdc-icon-size: 22px;
       }
 
@@ -298,7 +298,7 @@ class VolumioPlayerBar extends LitElement {
         background: var(--divider-color, rgba(255,255,255,0.08));
       }
 
-      .vol-btn ha-icon {
+      .vol-btn litgui-icon {
         --mdc-icon-size: 20px;
       }
 
@@ -344,7 +344,7 @@ class VolumioPlayerBar extends LitElement {
         gap: 8px;
       }
 
-      .empty-state ha-icon {
+      .empty-state litgui-icon {
         --mdc-icon-size: 20px;
       }
 
@@ -512,7 +512,7 @@ class VolumioPlayerBar extends LitElement {
     if (!isActive && !this.title) {
       return html`
         <div class="empty-state">
-          <ha-icon icon="mdi:music-note-off"></ha-icon>
+          <litgui-icon icon="mdi:music-note-off"></litgui-icon>
           <span>Nothing playing</span>
         </div>
       `;
@@ -538,7 +538,7 @@ class VolumioPlayerBar extends LitElement {
               @error=${this._onArtError}
             />`
           : html`<div class="art-placeholder" @click=${this._goToNowPlaying}>
-              <ha-icon icon="mdi:music-note"></ha-icon>
+              <litgui-icon icon="mdi:music-note"></litgui-icon>
             </div>`}
 
         <div class="track-info-wrap">
@@ -552,7 +552,7 @@ class VolumioPlayerBar extends LitElement {
             aria-label="${this.isFavorite ? "Remove from favorites" : "Add to favorites"}"
             title="${this.isFavorite ? "Remove from favorites" : "Add to favorites"}"
           >
-            <ha-icon icon="${this.isFavorite ? "mdi:heart" : "mdi:heart-outline"}"></ha-icon>
+            <litgui-icon icon="${this.isFavorite ? "mdi:heart" : "mdi:heart-outline"}"></litgui-icon>
           </button>
         </div>
 
@@ -564,19 +564,19 @@ class VolumioPlayerBar extends LitElement {
               title="Shuffle ${this.shuffle ? "on" : "off"}"
               aria-label="Shuffle: ${this.shuffle ? "on" : "off"}"
             >
-              <ha-icon icon="mdi:shuffle-variant"></ha-icon>
+              <litgui-icon icon="mdi:shuffle-variant"></litgui-icon>
             </button>
 
             <button class="ctrl-btn" @click=${() => this._command("prev")} aria-label="Previous track">
-              <ha-icon icon="mdi:skip-previous"></ha-icon>
+              <litgui-icon icon="mdi:skip-previous"></litgui-icon>
             </button>
 
             <button class="ctrl-btn play-pause" @click=${() => this._command("play_pause")} aria-label="${isPlaying ? "Pause" : "Play"}">
-              <ha-icon icon="${isPlaying ? "mdi:pause" : "mdi:play"}"></ha-icon>
+              <litgui-icon icon="${isPlaying ? "mdi:pause" : "mdi:play"}"></litgui-icon>
             </button>
 
             <button class="ctrl-btn" @click=${() => this._command("next")} aria-label="Next track">
-              <ha-icon icon="mdi:skip-next"></ha-icon>
+              <litgui-icon icon="mdi:skip-next"></litgui-icon>
             </button>
 
             <button
@@ -585,7 +585,7 @@ class VolumioPlayerBar extends LitElement {
               title="Repeat: ${this.repeat}"
               aria-label="Repeat: ${this.repeat}"
             >
-              <ha-icon icon="${repeatIcon}"></ha-icon>
+              <litgui-icon icon="${repeatIcon}"></litgui-icon>
             </button>
           </div>
 
@@ -621,7 +621,7 @@ class VolumioPlayerBar extends LitElement {
                 @click=${() => this._command("mute_toggle")}
                 aria-label="Volume: ${this.muted ? "muted" : this.volume + "%"}"
               >
-                <ha-icon icon="${volIcon}"></ha-icon>
+                <litgui-icon icon="${volIcon}"></litgui-icon>
               </button>
               <input
                 class="vol-slider"
@@ -689,7 +689,7 @@ class VolumioPlayerBar extends LitElement {
     e.target.style.display = "none";
     const placeholder = document.createElement("div");
     placeholder.className = "art-placeholder";
-    placeholder.innerHTML = '<ha-icon icon="mdi:music-note"></ha-icon>';
+    placeholder.innerHTML = '<litgui-icon icon="mdi:music-note"></litgui-icon>';
     e.target.parentNode.insertBefore(placeholder, e.target);
   }
 

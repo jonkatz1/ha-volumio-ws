@@ -16,6 +16,7 @@ import { resolveArt } from "./utils/format-utils.js";
 import { safeGet, safeSet, safeRemove } from "./utils/storage-utils.js";
 import { createAdapter } from "./adapters/index.js";
 import { APP_VERSION } from "./version.js";
+import "./components/litgui-icon.js";
 import "./components/top-bar.js";
 import "./components/left-nav.js";
 import "./components/player-bar.js";
@@ -268,7 +269,7 @@ class VolumioPanel extends LitElement {
           color: var(--primary-text-color);
         }
 
-        .queue-clear-btn ha-icon {
+        .queue-clear-btn litgui-icon {
           --mdc-icon-size: 18px;
         }
 
@@ -323,7 +324,7 @@ class VolumioPanel extends LitElement {
           object-fit: cover;
         }
 
-        .qi-art ha-icon {
+        .qi-art litgui-icon {
           --mdc-icon-size: 18px;
           color: var(--secondary-text-color);
           opacity: 0.4;
@@ -372,7 +373,7 @@ class VolumioPanel extends LitElement {
         }
         .qi-drag:active { cursor: grabbing; }
         .queue-item:hover .qi-drag { opacity: 0.6; }
-        .qi-drag ha-icon { --mdc-icon-size: 14px; }
+        .qi-drag litgui-icon { --mdc-icon-size: 14px; }
 
         .queue-item.dragging {
           opacity: 0.4;
@@ -408,7 +409,7 @@ class VolumioPanel extends LitElement {
           background: var(--divider-color, rgba(255, 255, 255, 0.08));
           color: var(--error-color, #f44336);
         }
-        .qi-remove ha-icon { --mdc-icon-size: 14px; }
+        .qi-remove litgui-icon { --mdc-icon-size: 14px; }
 
         /* ── Queue header actions ─────────────────── */
         .queue-actions {
@@ -491,7 +492,7 @@ class VolumioPanel extends LitElement {
           color: var(--secondary-text-color);
           font-size: 13px;
         }
-        .queue-empty-state ha-icon {
+        .queue-empty-state litgui-icon {
           --mdc-icon-size: 32px;
           opacity: 0.3;
         }
@@ -541,7 +542,7 @@ class VolumioPanel extends LitElement {
           gap: var(--volumio-space-md, 16px);
         }
 
-        .placeholder-view ha-icon {
+        .placeholder-view litgui-icon {
           --mdc-icon-size: 48px;
           color: var(--secondary-text-color);
           opacity: 0.3;
@@ -933,10 +934,10 @@ class VolumioPanel extends LitElement {
             <span class="queue-count">${this._queue.length} track${this._queue.length !== 1 ? "s" : ""}</span>
             <div class="queue-actions">
               <button class="queue-clear-btn" @click=${this._onQueueSaveStart} title="Save as playlist">
-                <ha-icon icon="mdi:content-save-outline"></ha-icon>
+                <litgui-icon icon="mdi:content-save-outline"></litgui-icon>
               </button>
               <button class="queue-clear-btn" @click=${this._onQueueClearClick} title="Clear queue">
-                <ha-icon icon="mdi:delete-outline"></ha-icon>
+                <litgui-icon icon="mdi:delete-outline"></litgui-icon>
               </button>
             </div>
           </div>
@@ -965,7 +966,7 @@ class VolumioPanel extends LitElement {
             ${this._queue.length === 0
               ? html`
                 <div class="queue-empty-state">
-                  <ha-icon icon="mdi:playlist-music-outline"></ha-icon>
+                  <litgui-icon icon="mdi:playlist-music-outline"></litgui-icon>
                   <div>Queue is empty</div>
                   <div>Browse for music to start playing.</div>
                   <button class="browse-btn" @click=${() => this._onNavigate({ detail: { view: "browse" } })}>Browse</button>
@@ -981,13 +982,13 @@ class VolumioPanel extends LitElement {
                   <div class="qi-drag"
                     @pointerdown=${(e) => this._onDragStart(e, i)}
                   >
-                    <ha-icon icon="mdi:drag-horizontal-variant"></ha-icon>
+                    <litgui-icon icon="mdi:drag-horizontal-variant"></litgui-icon>
                   </div>
                   ${this._settingQueueThumbnails ? html`
                     <div class="qi-art">
                       ${item.albumart
                         ? html`<img src="${resolveArt(item.albumart, volumioUrl, this._activeDeviceId)}" alt="" loading="lazy" />`
-                        : html`<ha-icon icon="mdi:music-note"></ha-icon>`}
+                        : html`<litgui-icon icon="mdi:music-note"></litgui-icon>`}
                     </div>
                   ` : ""}
                   <div class="qi-info">
@@ -998,7 +999,7 @@ class VolumioPanel extends LitElement {
                     ? html`<div class="eq-bars"><span></span><span></span><span></span></div>`
                     : ""}
                   <button class="qi-remove" @click=${(e) => this._onQueueRemove(e, i)} title="Remove">
-                    <ha-icon icon="mdi:close"></ha-icon>
+                    <litgui-icon icon="mdi:close"></litgui-icon>
                   </button>
                 </div>
               `;
@@ -1143,7 +1144,7 @@ class VolumioPanel extends LitElement {
   _renderPlaceholder(title, icon, description) {
     return html`
       <div class="placeholder-view">
-        <ha-icon icon="${icon}"></ha-icon>
+        <litgui-icon icon="${icon}"></litgui-icon>
         <div class="view-title">${title}</div>
         <div class="view-desc">${description}</div>
       </div>

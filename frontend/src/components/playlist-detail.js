@@ -61,7 +61,7 @@ class VolumioPlaylistDetail extends LitElement {
         flex-shrink: 0;
       }
 
-      .playlist-icon-box ha-icon {
+      .playlist-icon-box litgui-icon {
         --mdc-icon-size: 48px;
         color: var(--secondary-text-color);
         opacity: 0.5;
@@ -135,7 +135,7 @@ class VolumioPlaylistDetail extends LitElement {
         opacity: 0.85;
       }
 
-      .action-btn ha-icon {
+      .action-btn litgui-icon {
         --mdc-icon-size: 20px;
       }
 
@@ -246,7 +246,7 @@ class VolumioPlaylistDetail extends LitElement {
         color: var(--error-color, #ef5350);
       }
 
-      .track-remove ha-icon {
+      .track-remove litgui-icon {
         --mdc-icon-size: 16px;
       }
 
@@ -257,7 +257,7 @@ class VolumioPlaylistDetail extends LitElement {
         color: var(--secondary-text-color);
       }
 
-      .empty-state ha-icon {
+      .empty-state litgui-icon {
         --mdc-icon-size: 48px;
         opacity: 0.3;
         margin-bottom: 16px;
@@ -381,7 +381,7 @@ class VolumioPlaylistDetail extends LitElement {
     return html`
       <div class="playlist-header">
         <div class="playlist-icon-box">
-          <ha-icon icon="mdi:playlist-music"></ha-icon>
+          <litgui-icon icon="mdi:playlist-music"></litgui-icon>
         </div>
         <div class="playlist-meta">
           <span class="meta-type">Playlist</span>
@@ -393,13 +393,13 @@ class VolumioPlaylistDetail extends LitElement {
           </div>
           <div class="playlist-actions">
             <button class="action-btn primary" @click=${this._playAll} ?disabled=${trackCount === 0}>
-              <ha-icon icon="mdi:play"></ha-icon> Play
+              <litgui-icon icon="mdi:play"></litgui-icon> Play
             </button>
             <button class="action-btn secondary" @click=${this._enqueueAll} ?disabled=${trackCount === 0}>
-              <ha-icon icon="mdi:playlist-plus"></ha-icon> Enqueue
+              <litgui-icon icon="mdi:playlist-plus"></litgui-icon> Enqueue
             </button>
             <button class="action-btn danger" @click=${() => { this._confirmDelete = true; }}>
-              <ha-icon icon="mdi:delete-outline"></ha-icon> Delete
+              <litgui-icon icon="mdi:delete-outline"></litgui-icon> Delete
             </button>
           </div>
         </div>
@@ -416,7 +416,7 @@ class VolumioPlaylistDetail extends LitElement {
       ${trackCount === 0
         ? html`
           <div class="empty-state">
-            <ha-icon icon="mdi:playlist-music-outline"></ha-icon>
+            <litgui-icon icon="mdi:playlist-music-outline"></litgui-icon>
             <div class="empty-title">Empty playlist</div>
             <div class="empty-desc">Add tracks from browse or search.</div>
           </div>
@@ -454,7 +454,7 @@ class VolumioPlaylistDetail extends LitElement {
                     @click=${(e) => this._onRemoveTrack(e, track)}
                     title="Remove from playlist"
                   >
-                    <ha-icon icon="mdi:close"></ha-icon>
+                    <litgui-icon icon="mdi:close"></litgui-icon>
                   </button>
                 </div>
               `;

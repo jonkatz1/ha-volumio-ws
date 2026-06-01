@@ -67,7 +67,7 @@ class VolumioPlaylistList extends LitElement {
         opacity: 0.85;
       }
 
-      .create-btn ha-icon {
+      .create-btn litgui-icon {
         --mdc-icon-size: 18px;
       }
 
@@ -151,7 +151,7 @@ class VolumioPlaylistList extends LitElement {
         flex-shrink: 0;
       }
 
-      .playlist-icon ha-icon {
+      .playlist-icon litgui-icon {
         --mdc-icon-size: 20px;
         color: var(--secondary-text-color);
       }
@@ -191,7 +191,7 @@ class VolumioPlaylistList extends LitElement {
         color: var(--primary-text-color);
       }
 
-      .playlist-context ha-icon {
+      .playlist-context litgui-icon {
         --mdc-icon-size: 18px;
       }
 
@@ -202,7 +202,7 @@ class VolumioPlaylistList extends LitElement {
         color: var(--secondary-text-color);
       }
 
-      .empty-state ha-icon {
+      .empty-state litgui-icon {
         --mdc-icon-size: 48px;
         opacity: 0.3;
         margin-bottom: 16px;
@@ -278,7 +278,7 @@ class VolumioPlaylistList extends LitElement {
             : ""}
         </div>
         <button class="create-btn" @click=${this._onCreateClick}>
-          <ha-icon icon="mdi:plus"></ha-icon> New Playlist
+          <litgui-icon icon="mdi:plus"></litgui-icon> New Playlist
         </button>
       </div>
 
@@ -299,7 +299,7 @@ class VolumioPlaylistList extends LitElement {
       ${this.playlists.length === 0
         ? html`
           <div class="empty-state">
-            <ha-icon icon="mdi:playlist-music-outline"></ha-icon>
+            <litgui-icon icon="mdi:playlist-music-outline"></litgui-icon>
             <div class="empty-title">No playlists yet</div>
             <div class="empty-desc">Create one from the queue or while browsing.</div>
           </div>
@@ -313,7 +313,7 @@ class VolumioPlaylistList extends LitElement {
                 @contextmenu=${(e) => this._onContextMenu(e, pl)}
               >
                 <div class="playlist-icon">
-                  <ha-icon icon="mdi:playlist-music"></ha-icon>
+                  <litgui-icon icon="mdi:playlist-music"></litgui-icon>
                 </div>
                 <div class="playlist-name">${pl.title}</div>
                 <button
@@ -321,7 +321,7 @@ class VolumioPlaylistList extends LitElement {
                   @click=${(e) => this._onDotsClick(e, pl)}
                   title="More actions"
                 >
-                  <ha-icon icon="mdi:dots-vertical"></ha-icon>
+                  <litgui-icon icon="mdi:dots-vertical"></litgui-icon>
                 </button>
               </div>
             `)}

@@ -48,7 +48,7 @@ class VolumioSourceBadge extends LitElement {
         white-space: nowrap;
       }
 
-      ha-icon {
+      litgui-icon {
         --mdc-icon-size: 14px;
         width: 14px;
         height: 14px;
@@ -69,7 +69,7 @@ class VolumioSourceBadge extends LitElement {
 
     return html`
       <span class="source">
-        ${icon ? html`<ha-icon icon="${icon}"></ha-icon>` : ""}
+        ${icon ? html`<litgui-icon icon="${icon}"></litgui-icon>` : ""}
         ${label}
       </span>
     `;

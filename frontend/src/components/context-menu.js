@@ -95,7 +95,7 @@ class VolumioContextMenu extends LitElement {
         pointer-events: none;
       }
 
-      .menu-item ha-icon {
+      .menu-item litgui-icon {
         --mdc-icon-size: 18px;
         color: var(--secondary-text-color);
         flex-shrink: 0;
@@ -131,12 +131,12 @@ class VolumioContextMenu extends LitElement {
         border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.08));
       }
 
-      .submenu-header ha-icon {
+      .submenu-header litgui-icon {
         --mdc-icon-size: 16px;
         cursor: pointer;
       }
 
-      .submenu-header ha-icon:hover {
+      .submenu-header litgui-icon:hover {
         color: var(--primary-text-color);
       }
 
@@ -155,7 +155,7 @@ class VolumioContextMenu extends LitElement {
         background: var(--divider-color, rgba(255, 255, 255, 0.08));
       }
 
-      .submenu-item ha-icon {
+      .submenu-item litgui-icon {
         --mdc-icon-size: 16px;
         color: var(--secondary-text-color);
       }
@@ -238,9 +238,9 @@ class VolumioContextMenu extends LitElement {
           class="menu-item ${item.disabled ? "disabled" : ""}"
           @click=${() => this._onAction(item)}
         >
-          <ha-icon icon="${item.icon}"></ha-icon>
+          <litgui-icon icon="${item.icon}"></litgui-icon>
           <span class="label">${item.label}</span>
-          ${item.submenu ? html`<ha-icon class="arrow" icon="mdi:chevron-right"></ha-icon>` : ""}
+          ${item.submenu ? html`<litgui-icon class="arrow" icon="mdi:chevron-right"></litgui-icon>` : ""}
         </div>
       `;
     });
@@ -249,17 +249,17 @@ class VolumioContextMenu extends LitElement {
   _renderSubmenu() {
     return html`
       <div class="submenu-header">
-        <ha-icon icon="mdi:arrow-left" @click=${() => { this._showSubmenu = false; }}></ha-icon>
+        <litgui-icon icon="mdi:arrow-left" @click=${() => { this._showSubmenu = false; }}></litgui-icon>
         Add to Playlist
       </div>
       ${(this.submenuItems || []).map(pl => html`
         <div class="submenu-item" @click=${() => this._onSubmenuAction(pl.key)}>
-          <ha-icon icon="mdi:playlist-music"></ha-icon>
+          <litgui-icon icon="mdi:playlist-music"></litgui-icon>
           <span class="label">${pl.label}</span>
         </div>
       `)}
       <div class="submenu-item create-new" @click=${() => this._onSubmenuAction("__new__")}>
-        <ha-icon icon="mdi:plus"></ha-icon>
+        <litgui-icon icon="mdi:plus"></litgui-icon>
         <span class="label">New Playlist</span>
       </div>
     `;

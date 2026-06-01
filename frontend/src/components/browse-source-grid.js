@@ -86,7 +86,7 @@ class VolumioBrowseSourceGrid extends LitElement {
         object-fit: cover;
       }
 
-      .source-icon ha-icon {
+      .source-icon litgui-icon {
         --mdc-icon-size: 32px;
         color: var(--secondary-text-color);
       }
@@ -111,7 +111,7 @@ class VolumioBrowseSourceGrid extends LitElement {
         gap: var(--volumio-space-md, 16px);
       }
 
-      .empty-state ha-icon {
+      .empty-state litgui-icon {
         --mdc-icon-size: 48px;
         color: var(--secondary-text-color);
         opacity: 0.3;
@@ -134,7 +134,7 @@ class VolumioBrowseSourceGrid extends LitElement {
     if (!this.sources || this.sources.length === 0) {
       return html`
         <div class="empty-state">
-          <ha-icon icon="mdi:music-box-multiple-outline"></ha-icon>
+          <litgui-icon icon="mdi:music-box-multiple-outline"></litgui-icon>
           <div class="message">No music sources configured</div>
         </div>
       `;
@@ -166,7 +166,7 @@ class VolumioBrowseSourceGrid extends LitElement {
                 alt="${source.name}"
                 @error=${this._onIconError}
               />`
-            : html`<ha-icon icon="${icon}"></ha-icon>`}
+            : html`<litgui-icon icon="${icon}"></litgui-icon>`}
         </div>
         <div class="source-name">${source.name}</div>
       </div>
@@ -188,7 +188,7 @@ class VolumioBrowseSourceGrid extends LitElement {
     // Replace broken image with icon
     const parent = e.target.parentElement;
     e.target.remove();
-    parent.innerHTML = `<ha-icon icon="mdi:music-box"></ha-icon>`;
+    parent.innerHTML = `<litgui-icon icon="mdi:music-box"></litgui-icon>`;
   }
 }
 

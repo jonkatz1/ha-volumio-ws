@@ -126,7 +126,7 @@ class VolumioLeftNav extends LitElement {
         border-radius: 0 2px 2px 0;
       }
 
-      .nav-item ha-icon {
+      .nav-item litgui-icon {
         --mdc-icon-size: 22px;
         flex-shrink: 0;
         width: 24px;
@@ -148,7 +148,7 @@ class VolumioLeftNav extends LitElement {
         display: none;
       }
 
-      .collapsed .nav-item ha-icon {
+      .collapsed .nav-item litgui-icon {
         margin: 0;
       }
 
@@ -182,7 +182,7 @@ class VolumioLeftNav extends LitElement {
         background: var(--divider-color, rgba(255,255,255,0.08));
       }
 
-      .pin-btn ha-icon {
+      .pin-btn litgui-icon {
         --mdc-icon-size: 18px;
       }
 
@@ -238,7 +238,7 @@ class VolumioLeftNav extends LitElement {
                 title="${src.name}"
                 aria-label="${src.name}"
               >
-                <ha-icon icon="${icon}"></ha-icon>
+                <litgui-icon icon="${icon}"></litgui-icon>
                 <span class="nav-item-label">${src.name}</span>
               </button>
             `;
@@ -254,7 +254,7 @@ class VolumioLeftNav extends LitElement {
               title="${sc.label}"
               aria-label="${sc.label}"
             >
-              <ha-icon icon="${sc.icon}"></ha-icon>
+              <litgui-icon icon="${sc.icon}"></litgui-icon>
               <span class="nav-item-label">${sc.label}</span>
             </button>
           `)}
@@ -267,14 +267,14 @@ class VolumioLeftNav extends LitElement {
             title="Settings"
             aria-label="Panel Settings"
           >
-            <ha-icon icon="mdi:cog"></ha-icon>
+            <litgui-icon icon="mdi:cog"></litgui-icon>
             <span class="nav-item-label">Settings</span>
           </button>
         </div>
 
         <div class="nav-footer">
           <button class="pin-btn" @click=${this._togglePin} title="${isCollapsed ? "Pin sidebar" : "Collapse sidebar"}">
-            <ha-icon icon="${isCollapsed ? "mdi:pin" : "mdi:pin-off"}"></ha-icon>
+            <litgui-icon icon="${isCollapsed ? "mdi:pin" : "mdi:pin-off"}"></litgui-icon>
             <span>${isCollapsed ? "Pin" : "Collapse"}</span>
           </button>
           <a class="brand-link" href="https://litgui.com" target="_blank" rel="noopener noreferrer" aria-label="LitGUI — litgui.com">

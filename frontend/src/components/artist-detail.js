@@ -137,7 +137,7 @@ class VolumioArtistDetail extends LitElement {
         display: block;
       }
 
-      .similar-art ha-icon {
+      .similar-art litgui-icon {
         --mdc-icon-size: 48px;
         color: var(--secondary-text-color);
         opacity: 0.3;
@@ -367,7 +367,7 @@ class VolumioArtistDetail extends LitElement {
                 <div class="similar-art">
                   ${art
                     ? html`<img src="${art}" alt="${sim.artist || ""}" @error=${this._onArtError} />`
-                    : html`<ha-icon icon="mdi:account-music"></ha-icon>`}
+                    : html`<litgui-icon icon="mdi:account-music"></litgui-icon>`}
                 </div>
                 <div class="similar-name">${sim.artist || "Unknown"}</div>
               </div>
@@ -414,7 +414,7 @@ class VolumioArtistDetail extends LitElement {
   _onArtError(e) {
     const container = e.target.parentElement;
     e.target.remove();
-    container.innerHTML = `<ha-icon icon="mdi:account-music"></ha-icon>`;
+    container.innerHTML = `<litgui-icon icon="mdi:account-music"></litgui-icon>`;
   }
 
   _onCardClick(e) {

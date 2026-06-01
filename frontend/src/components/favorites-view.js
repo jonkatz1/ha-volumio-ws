@@ -121,7 +121,7 @@ class VolumioFavoritesView extends LitElement {
         object-fit: cover;
       }
 
-      .fav-art ha-icon {
+      .fav-art litgui-icon {
         --mdc-icon-size: 20px;
         color: var(--secondary-text-color);
         opacity: 0.4;
@@ -197,7 +197,7 @@ class VolumioFavoritesView extends LitElement {
         color: var(--primary-text-color);
       }
 
-      .fav-context ha-icon {
+      .fav-context litgui-icon {
         --mdc-icon-size: 18px;
       }
 
@@ -208,7 +208,7 @@ class VolumioFavoritesView extends LitElement {
         color: var(--secondary-text-color);
       }
 
-      .empty-state ha-icon {
+      .empty-state litgui-icon {
         --mdc-icon-size: 48px;
         opacity: 0.3;
         margin-bottom: 16px;
@@ -296,7 +296,7 @@ class VolumioFavoritesView extends LitElement {
       ${this.items.length === 0
         ? html`
           <div class="empty-state">
-            <ha-icon icon="mdi:heart-outline"></ha-icon>
+            <litgui-icon icon="mdi:heart-outline"></litgui-icon>
             <div class="empty-title">No favorites yet</div>
             <div class="empty-desc">Tap the heart icon on any track, album, or artist to add it here.</div>
           </div>
@@ -316,7 +316,7 @@ class VolumioFavoritesView extends LitElement {
                   <div class="fav-art">
                     ${art
                       ? html`<img src="${art}" alt="" loading="lazy" @error=${(e) => { e.target.remove(); }} />`
-                      : html`<ha-icon icon="mdi:music-note"></ha-icon>`}
+                      : html`<litgui-icon icon="mdi:music-note"></litgui-icon>`}
                   </div>
                   <div class="fav-info">
                     <div class="fav-title">${item.title || "—"}</div>
@@ -328,7 +328,7 @@ class VolumioFavoritesView extends LitElement {
                     @click=${(e) => this._onDotsClick(e, item)}
                     title="More actions"
                   >
-                    <ha-icon icon="mdi:dots-vertical"></ha-icon>
+                    <litgui-icon icon="mdi:dots-vertical"></litgui-icon>
                   </button>
                 </div>
               `;

@@ -125,7 +125,7 @@ class VolumioNowPlaying extends LitElement {
         justify-content: center;
       }
 
-      .art-placeholder ha-icon {
+      .art-placeholder litgui-icon {
         --mdc-icon-size: 80px;
         color: var(--secondary-text-color);
         opacity: 0.3;
@@ -175,15 +175,15 @@ class VolumioNowPlaying extends LitElement {
         transform: scale(1.1);
       }
 
-      .fav-btn ha-icon {
+      .fav-btn litgui-icon {
         --mdc-icon-size: 24px;
       }
 
-      .fav-btn.active ha-icon {
+      .fav-btn.active litgui-icon {
         color: #e91e63;
       }
 
-      .fav-btn:not(.active) ha-icon {
+      .fav-btn:not(.active) litgui-icon {
         color: var(--secondary-text-color);
       }
 
@@ -233,7 +233,7 @@ class VolumioNowPlaying extends LitElement {
         gap: var(--volumio-space-md, 16px);
       }
 
-      .empty-state ha-icon {
+      .empty-state litgui-icon {
         --mdc-icon-size: 48px;
         color: var(--secondary-text-color);
         opacity: 0.4;
@@ -376,7 +376,7 @@ class VolumioNowPlaying extends LitElement {
                 @error=${this._onArtError}
               />`
             : html`<div class="art-placeholder">
-                <ha-icon icon="mdi:music-note"></ha-icon>
+                <litgui-icon icon="mdi:music-note"></litgui-icon>
               </div>`}
         </div>
 
@@ -388,7 +388,7 @@ class VolumioNowPlaying extends LitElement {
               @click=${this._toggleFavorite}
               aria-label="${this.isFavorite ? "Remove from favorites" : "Add to favorites"}"
             >
-              <ha-icon icon="${this.isFavorite ? "mdi:heart" : "mdi:heart-outline"}"></ha-icon>
+              <litgui-icon icon="${this.isFavorite ? "mdi:heart" : "mdi:heart-outline"}"></litgui-icon>
             </button>
           </div>
 
@@ -418,7 +418,7 @@ class VolumioNowPlaying extends LitElement {
   _renderEmpty() {
     return html`
       <div class="empty-state">
-        <ha-icon icon="mdi:music-note-off"></ha-icon>
+        <litgui-icon icon="mdi:music-note-off"></litgui-icon>
         <div class="message">Nothing playing</div>
         <button class="browse-btn" @click=${this._goToBrowse}>Browse Music</button>
       </div>

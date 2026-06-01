@@ -67,7 +67,7 @@ class VolumioBreadcrumbBar extends LitElement {
         align-items: center;
       }
 
-      .sep ha-icon {
+      .sep litgui-icon {
         --mdc-icon-size: 14px;
       }
 
@@ -96,7 +96,7 @@ class VolumioBreadcrumbBar extends LitElement {
         ${segments.map((seg, i) => {
           const isLast = i === segments.length - 1;
           return html`
-            ${i > 0 ? html`<span class="sep"><ha-icon icon="mdi:chevron-right"></ha-icon></span>` : ""}
+            ${i > 0 ? html`<span class="sep"><litgui-icon icon="mdi:chevron-right"></litgui-icon></span>` : ""}
             ${seg.ellipsis
               ? html`<span class="ellipsis">...</span>`
               : html`

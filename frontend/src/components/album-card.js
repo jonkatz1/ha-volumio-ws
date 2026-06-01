@@ -84,7 +84,7 @@ class VolumioAlbumCard extends LitElement {
         background: var(--card-background-color, #2a2a2a);
       }
 
-      .art-placeholder ha-icon {
+      .art-placeholder litgui-icon {
         --mdc-icon-size: 48px;
         color: var(--secondary-text-color);
         opacity: 0.3;
@@ -121,7 +121,7 @@ class VolumioAlbumCard extends LitElement {
         color: #fff;
       }
 
-      .play-btn ha-icon {
+      .play-btn litgui-icon {
         --mdc-icon-size: 22px;
       }
 
@@ -136,7 +136,7 @@ class VolumioAlbumCard extends LitElement {
         background: rgba(255, 255, 255, 0.3);
       }
 
-      .queue-btn ha-icon {
+      .queue-btn litgui-icon {
         --mdc-icon-size: 18px;
       }
 
@@ -202,14 +202,14 @@ class VolumioAlbumCard extends LitElement {
                 @error=${this._onArtError}
               />`
             : html`<div class="art-placeholder">
-                <ha-icon icon="${icon}"></ha-icon>
+                <litgui-icon icon="${icon}"></litgui-icon>
               </div>`}
           <div class="play-overlay">
             <button class="play-btn" @click=${this._onPlay} title="Play">
-              <ha-icon icon="mdi:play"></ha-icon>
+              <litgui-icon icon="mdi:play"></litgui-icon>
             </button>
             <button class="queue-btn" @click=${this._onDotsClick} title="More actions">
-              <ha-icon icon="mdi:dots-vertical"></ha-icon>
+              <litgui-icon icon="mdi:dots-vertical"></litgui-icon>
             </button>
           </div>
         </div>
@@ -282,7 +282,7 @@ class VolumioAlbumCard extends LitElement {
     e.target.remove();
     const placeholder = document.createElement("div");
     placeholder.className = "art-placeholder";
-    placeholder.innerHTML = `<ha-icon icon="mdi:music-note"></ha-icon>`;
+    placeholder.innerHTML = `<litgui-icon icon="mdi:music-note"></litgui-icon>`;
     container.prepend(placeholder);
   }
 }

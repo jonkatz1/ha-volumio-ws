@@ -69,7 +69,7 @@ class VolumioHistoryView extends LitElement {
         color: var(--primary-text-color);
       }
 
-      .clear-btn ha-icon {
+      .clear-btn litgui-icon {
         --mdc-icon-size: 16px;
       }
 
@@ -141,7 +141,7 @@ class VolumioHistoryView extends LitElement {
         -webkit-mask-size: contain;
       }
 
-      .hi-art ha-icon {
+      .hi-art litgui-icon {
         --mdc-icon-size: 18px;
         color: var(--secondary-text-color);
         opacity: 0.4;
@@ -204,7 +204,7 @@ class VolumioHistoryView extends LitElement {
         color: var(--primary-text-color);
       }
 
-      .hi-context ha-icon {
+      .hi-context litgui-icon {
         --mdc-icon-size: 18px;
       }
 
@@ -215,7 +215,7 @@ class VolumioHistoryView extends LitElement {
         color: var(--secondary-text-color);
       }
 
-      .empty-state ha-icon {
+      .empty-state litgui-icon {
         --mdc-icon-size: 48px;
         opacity: 0.3;
         margin-bottom: 16px;
@@ -248,7 +248,7 @@ class VolumioHistoryView extends LitElement {
           <span class="title">History</span>
         </div>
         <div class="empty-state">
-          <ha-icon icon="mdi:history"></ha-icon>
+          <litgui-icon icon="mdi:history"></litgui-icon>
           <div class="empty-title">No listening history yet</div>
           <div class="empty-desc">Play some music!</div>
         </div>
@@ -264,7 +264,7 @@ class VolumioHistoryView extends LitElement {
           <span class="count">${this.history.length} track${this.history.length !== 1 ? "s" : ""}</span>
         </div>
         <button class="clear-btn" @click=${this._onClear}>
-          <ha-icon icon="mdi:delete-outline"></ha-icon> Clear History
+          <litgui-icon icon="mdi:delete-outline"></litgui-icon> Clear History
         </button>
       </div>
 
@@ -285,7 +285,7 @@ class VolumioHistoryView extends LitElement {
                 <div class="hi-art">
                   ${art
                     ? html`<img src="${art}" alt="" loading="lazy" @error=${(e) => { e.target.remove(); }} />`
-                    : html`<ha-icon icon="mdi:music-note"></ha-icon>`}
+                    : html`<litgui-icon icon="mdi:music-note"></litgui-icon>`}
                 </div>
                 <div class="hi-info">
                   <div class="hi-title">${item.title || "—"}</div>
@@ -297,7 +297,7 @@ class VolumioHistoryView extends LitElement {
                   @click=${(e) => this._onDotsClick(e, item)}
                   title="More actions"
                 >
-                  <ha-icon icon="mdi:dots-vertical"></ha-icon>
+                  <litgui-icon icon="mdi:dots-vertical"></litgui-icon>
                 </button>
               </div>
             `;

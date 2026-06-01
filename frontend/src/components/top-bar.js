@@ -77,7 +77,7 @@ class VolumioTopBar extends LitElement {
         background: var(--divider-color, rgba(255,255,255,0.08));
       }
 
-      ha-icon {
+      litgui-icon {
         --mdc-icon-size: 24px;
       }
 
@@ -129,7 +129,7 @@ class VolumioTopBar extends LitElement {
         cursor: text;
       }
 
-      .search-field ha-icon {
+      .search-field litgui-icon {
         --mdc-icon-size: 18px;
         color: var(--secondary-text-color);
         flex-shrink: 0;
@@ -277,7 +277,7 @@ class VolumioTopBar extends LitElement {
         font-weight: 600;
       }
 
-      .device-menu-item ha-icon {
+      .device-menu-item litgui-icon {
         --mdc-icon-size: 18px;
         color: var(--primary-color, #03a9f4);
         flex-shrink: 0;
@@ -388,7 +388,7 @@ class VolumioTopBar extends LitElement {
           title="Toggle navigation"
           aria-label="Toggle navigation sidebar"
         >
-          <ha-icon icon="mdi:menu"></ha-icon>
+          <litgui-icon icon="mdi:menu"></litgui-icon>
         </button>
 
         ${this.showBackButton ? html`
@@ -398,7 +398,7 @@ class VolumioTopBar extends LitElement {
             title="Back"
             aria-label="Go back"
           >
-            <ha-icon icon="mdi:arrow-left"></ha-icon>
+            <litgui-icon icon="mdi:arrow-left"></litgui-icon>
           </button>
         ` : ""}
 
@@ -416,7 +416,7 @@ class VolumioTopBar extends LitElement {
         <div class="spacer"></div>
 
         <div class="search-field" @click=${this._focusSearch} title="Search music">
-          <ha-icon icon="mdi:magnify"></ha-icon>
+          <litgui-icon icon="mdi:magnify"></litgui-icon>
           <input
             type="text"
             placeholder="Search..."
@@ -449,7 +449,7 @@ class VolumioTopBar extends LitElement {
           title="Toggle queue"
           aria-label="Toggle queue panel"
         >
-          <ha-icon icon="mdi:playlist-music"></ha-icon>
+          <litgui-icon icon="mdi:playlist-music"></litgui-icon>
         </button>
 
         ${this._renderDeviceSelector()}
@@ -475,7 +475,7 @@ class VolumioTopBar extends LitElement {
           aria-haspopup="listbox"
           aria-expanded=${this._deviceMenuOpen ? "true" : "false"}
         >
-          <ha-icon icon="mdi:speaker-multiple"></ha-icon>
+          <litgui-icon icon="mdi:speaker-multiple"></litgui-icon>
         </button>
         ${this._deviceMenuOpen ? html`
           <div class="device-menu" role="listbox">
@@ -489,7 +489,7 @@ class VolumioTopBar extends LitElement {
                   @click=${() => this._selectDevice(d.config_entry_id)}
                 >
                   ${isActive
-                    ? html`<ha-icon icon="mdi:check"></ha-icon>`
+                    ? html`<litgui-icon icon="mdi:check"></litgui-icon>`
                     : html`<span class="device-menu-spacer"></span>`}
                   <span class="device-menu-name">${d.name || d.config_entry_id}</span>
                 </button>
@@ -528,7 +528,7 @@ class VolumioTopBar extends LitElement {
         ${display.map((seg, i) => {
           const isLast = i === display.length - 1;
           return html`
-            ${i > 0 ? html`<span class="breadcrumb-sep"><ha-icon icon="mdi:chevron-right" style="--mdc-icon-size:14px"></ha-icon></span>` : ""}
+            ${i > 0 ? html`<span class="breadcrumb-sep"><litgui-icon icon="mdi:chevron-right" style="--mdc-icon-size:14px"></litgui-icon></span>` : ""}
             <span
               class="breadcrumb-segment ${isLast ? "current" : ""}"
               @click=${() => !isLast && seg.path != null && this._navigate(seg.path)}

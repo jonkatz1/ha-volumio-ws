@@ -113,7 +113,7 @@ class VolumioTrackCard extends LitElement {
         display: none;
       }
 
-      .cell-num ha-icon {
+      .cell-num litgui-icon {
         --mdc-icon-size: 18px;
       }
 
@@ -179,7 +179,7 @@ class VolumioTrackCard extends LitElement {
         color: var(--primary-text-color);
       }
 
-      .context-btn ha-icon {
+      .context-btn litgui-icon {
         --mdc-icon-size: 18px;
       }
 
@@ -245,8 +245,8 @@ class VolumioTrackCard extends LitElement {
       >
         <div class="cell-num">
           <span class="num-text">${this.index || ""}</span>
-          <ha-icon class="play-icon" icon="mdi:play"></ha-icon>
-          <ha-icon class="eq-icon" icon="mdi:equalizer"></ha-icon>
+          <litgui-icon class="play-icon" icon="mdi:play"></litgui-icon>
+          <litgui-icon class="eq-icon" icon="mdi:equalizer"></litgui-icon>
         </div>
         <div class="cell-title" title="${this.title}">${this.title || "—"}</div>
         <div class="cell-artist" title="${this.artist}">${this.artist || ""}</div>
@@ -259,7 +259,7 @@ class VolumioTrackCard extends LitElement {
         <div class="cell-duration">${this.duration ? formatTime(this.duration) : ""}</div>
         <div class="cell-context">
           <button class="context-btn" @click=${this._onDotsClick} title="More actions">
-            <ha-icon icon="mdi:dots-vertical"></ha-icon>
+            <litgui-icon icon="mdi:dots-vertical"></litgui-icon>
           </button>
         </div>
       </div>

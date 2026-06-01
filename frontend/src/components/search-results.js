@@ -135,7 +135,7 @@ class VolumioSearchResults extends LitElement {
         background: var(--divider-color, rgba(255, 255, 255, 0.08));
       }
 
-      .artist-link ha-icon {
+      .artist-link litgui-icon {
         --mdc-icon-size: 18px;
         color: var(--secondary-text-color);
       }
@@ -206,7 +206,7 @@ class VolumioSearchResults extends LitElement {
         gap: var(--volumio-space-md, 16px);
       }
 
-      .empty-state ha-icon {
+      .empty-state litgui-icon {
         --mdc-icon-size: 48px;
         color: var(--secondary-text-color);
         opacity: 0.3;
@@ -240,7 +240,7 @@ class VolumioSearchResults extends LitElement {
       if (!this.query) return html``;
       return html`
         <div class="empty-state">
-          <ha-icon icon="mdi:magnify-close"></ha-icon>
+          <litgui-icon icon="mdi:magnify-close"></litgui-icon>
           <div class="message">No results found for "${this.query}"</div>
         </div>
       `;
@@ -348,10 +348,10 @@ class VolumioSearchResults extends LitElement {
             <span class="source-title">${group.source}</span>
             <span class="source-count">${totalItems}</span>
           </div>
-          <ha-icon
+          <litgui-icon
             class="collapse-icon ${isCollapsed ? "collapsed" : ""}"
             icon="mdi:chevron-down"
-          ></ha-icon>
+          ></litgui-icon>
         </div>
         ${!isCollapsed ? group.sections.map(section =>
           this._renderTypeSection(section, key)
@@ -453,7 +453,7 @@ class VolumioSearchResults extends LitElement {
             class="artist-link"
             @click=${() => this._onArtistClick(item)}
           >
-            <ha-icon icon="mdi:account-music"></ha-icon>
+            <litgui-icon icon="mdi:account-music"></litgui-icon>
             ${item.title || item.name || "Unknown"}
           </span>
         `)}

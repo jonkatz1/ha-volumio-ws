@@ -89,7 +89,7 @@ class VolumioBrowseList extends LitElement {
         background: var(--divider-color, rgba(255, 255, 255, 0.08));
       }
 
-      .view-btn ha-icon {
+      .view-btn litgui-icon {
         --mdc-icon-size: 20px;
       }
 
@@ -187,7 +187,7 @@ class VolumioBrowseList extends LitElement {
         gap: var(--volumio-space-md, 16px);
       }
 
-      .empty-state ha-icon {
+      .empty-state litgui-icon {
         --mdc-icon-size: 48px;
         color: var(--secondary-text-color);
         opacity: 0.3;
@@ -291,7 +291,7 @@ class VolumioBrowseList extends LitElement {
     if (!this.items || this.items.length === 0) {
       return html`
         <div class="empty-state">
-          <ha-icon icon="mdi:folder-open-outline"></ha-icon>
+          <litgui-icon icon="mdi:folder-open-outline"></litgui-icon>
           <div class="message">No items found</div>
         </div>
       `;
@@ -311,14 +311,14 @@ class VolumioBrowseList extends LitElement {
             @click=${() => this._setViewMode("grid")}
             title="Grid view"
           >
-            <ha-icon icon="mdi:view-grid"></ha-icon>
+            <litgui-icon icon="mdi:view-grid"></litgui-icon>
           </button>
           <button
             class="view-btn ${this.viewMode === "list" ? "active" : ""}"
             @click=${() => this._setViewMode("list")}
             title="List view"
           >
-            <ha-icon icon="mdi:view-list"></ha-icon>
+            <litgui-icon icon="mdi:view-list"></litgui-icon>
           </button>
         </div>
       </div>

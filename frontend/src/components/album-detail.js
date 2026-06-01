@@ -96,7 +96,7 @@ class VolumioAlbumDetail extends LitElement {
         justify-content: center;
       }
 
-      .album-art-placeholder ha-icon {
+      .album-art-placeholder litgui-icon {
         --mdc-icon-size: 64px;
         color: var(--secondary-text-color);
         opacity: 0.3;
@@ -183,7 +183,7 @@ class VolumioAlbumDetail extends LitElement {
         opacity: 0.85;
       }
 
-      .action-btn ha-icon {
+      .action-btn litgui-icon {
         --mdc-icon-size: 20px;
       }
 
@@ -484,7 +484,7 @@ class VolumioAlbumDetail extends LitElement {
           ${this.albumArt
             ? html`<img src="${resolveArt(this.albumArt, this.volumioUrl, this.configEntryId)}" alt="${this.albumTitle}" @error=${this._onArtError} />`
             : html`<div class="album-art-placeholder">
-                <ha-icon icon="mdi:album"></ha-icon>
+                <litgui-icon icon="mdi:album"></litgui-icon>
               </div>`}
         </div>
         <div class="album-meta">
@@ -511,13 +511,13 @@ class VolumioAlbumDetail extends LitElement {
           ` : ""}
           <div class="album-actions">
             <button class="action-btn primary" @click=${this._playAlbum}>
-              <ha-icon icon="mdi:play"></ha-icon> Play
+              <litgui-icon icon="mdi:play"></litgui-icon> Play
             </button>
             <button class="action-btn secondary" @click=${this._addToQueue}>
-              <ha-icon icon="mdi:playlist-plus"></ha-icon> Add to Queue
+              <litgui-icon icon="mdi:playlist-plus"></litgui-icon> Add to Queue
             </button>
             <button class="action-btn secondary" @click=${this._onMoreClick}>
-              <ha-icon icon="mdi:dots-horizontal"></ha-icon>
+              <litgui-icon icon="mdi:dots-horizontal"></litgui-icon>
             </button>
           </div>
         </div>
@@ -751,7 +751,7 @@ class VolumioAlbumDetail extends LitElement {
   _onArtError(e) {
     const container = e.target.parentElement;
     e.target.remove();
-    container.innerHTML = `<div class="album-art-placeholder"><ha-icon icon="mdi:album"></ha-icon></div>`;
+    container.innerHTML = `<div class="album-art-placeholder"><litgui-icon icon="mdi:album"></litgui-icon></div>`;
   }
 }
 
