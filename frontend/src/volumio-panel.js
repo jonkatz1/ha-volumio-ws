@@ -15,6 +15,7 @@ import { detectQuality } from "./utils/quality-utils.js";
 import { resolveArt } from "./utils/format-utils.js";
 import { safeGet, safeSet, safeRemove } from "./utils/storage-utils.js";
 import { createAdapter } from "./adapters/index.js";
+import { APP_VERSION } from "./version.js";
 import "./components/top-bar.js";
 import "./components/left-nav.js";
 import "./components/player-bar.js";
@@ -1214,6 +1215,7 @@ class VolumioPanel extends LitElement {
         .aboutInfo=${{
           volumioUrl: this._adapter.getVolumioUrl(),
           entityId: this._adapter.entityId,
+          version: APP_VERSION,
         }}
       ></volumio-settings-panel>
     `;

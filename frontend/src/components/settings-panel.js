@@ -11,6 +11,8 @@
  *   volumio-setting-change: { key: string, value: any }
  */
 import { LitElement, html, css } from "lit";
+import { unsafeHTML } from "lit/directives/unsafe-html.js";
+import { iconDark } from "../assets/branding/index.js";
 
 class VolumioSettingsPanel extends LitElement {
   static get properties() {
@@ -196,18 +198,48 @@ class VolumioSettingsPanel extends LitElement {
 
       /* ── About attribution ─────────── */
       .about-attribution {
+        display: flex;
+        align-items: center;
+        gap: 12px;
         padding-top: 12px;
         margin-top: 4px;
         border-top: 1px solid var(--divider-color, rgba(255, 255, 255, 0.04));
-        font-size: 13px;
         color: var(--secondary-text-color);
         line-height: 1.4;
       }
 
+      .about-attribution .brand-mark {
+        width: 36px;
+        height: 36px;
+        flex-shrink: 0;
+      }
+
+      .about-attribution .brand-mark svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .about-attribution .brand-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .about-attribution .brand-name {
+        font-size: 14px;
+        color: var(--primary-text-color);
+      }
+
+      .about-attribution .brand-meta {
+        font-size: 12px;
+        opacity: 0.7;
+      }
+
       .about-attribution a {
-        color: var(--secondary-text-color);
+        color: inherit;
         text-decoration: none;
-        opacity: 0.8;
+        opacity: 0.85;
         transition: opacity 0.15s;
       }
 
@@ -309,7 +341,13 @@ class VolumioSettingsPanel extends LitElement {
           </div>
         ` : ""}
         <div class="about-attribution">
-          LitGUI for Volumio<span class="about-sep">·</span><a href="https://litgui.com" target="_blank" rel="noopener noreferrer">litgui.com</a>
+          <div class="brand-mark">${unsafeHTML(iconDark)}</div>
+          <div class="brand-text">
+            <div class="brand-name">LitGUI for Volumio</div>
+            <div class="brand-meta">
+              v${this.aboutInfo.version || "unknown"}<span class="about-sep">·</span><a href="https://litgui.com" target="_blank" rel="noopener noreferrer">litgui.com</a>
+            </div>
+          </div>
         </div>
       </div>
     `;
