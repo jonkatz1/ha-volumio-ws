@@ -196,6 +196,37 @@ class VolumioSettingsPanel extends LitElement {
         max-width: 60%;
       }
 
+      /* ── Volumio System links ──────── */
+      .volumio-link-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 0;
+        text-decoration: none;
+        color: var(--primary-text-color);
+        cursor: pointer;
+        border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.04));
+        transition: color 0.15s;
+      }
+
+      .volumio-link-row:last-child {
+        border-bottom: none;
+      }
+
+      .volumio-link-row:hover {
+        color: var(--primary-color);
+      }
+
+      .volumio-link-row .link-icon {
+        --mdc-icon-size: 18px;
+        opacity: 0.6;
+        transition: opacity 0.15s;
+      }
+
+      .volumio-link-row:hover .link-icon {
+        opacity: 1;
+      }
+
       /* ── About attribution ─────────── */
       .about-attribution {
         display: flex;
@@ -325,6 +356,32 @@ class VolumioSettingsPanel extends LitElement {
           </div>
         </div>
       </div>
+
+      ${this.aboutInfo.volumioUrl ? html`
+        <div class="section">
+          <div class="section-title">Volumio System</div>
+          <a class="volumio-link-row" href="${this.aboutInfo.volumioUrl}/plugin/miscellanea-my_music" target="_blank" rel="noopener noreferrer">
+            <span>Sources</span>
+            <litgui-icon class="link-icon" icon="mdi:open-in-new"></litgui-icon>
+          </a>
+          <a class="volumio-link-row" href="${this.aboutInfo.volumioUrl}/plugin/audio_interface-alsa_controller" target="_blank" rel="noopener noreferrer">
+            <span>Playback Options</span>
+            <litgui-icon class="link-icon" icon="mdi:open-in-new"></litgui-icon>
+          </a>
+          <a class="volumio-link-row" href="${this.aboutInfo.volumioUrl}/plugin/system_controller-network" target="_blank" rel="noopener noreferrer">
+            <span>Network</span>
+            <litgui-icon class="link-icon" icon="mdi:open-in-new"></litgui-icon>
+          </a>
+          <a class="volumio-link-row" href="${this.aboutInfo.volumioUrl}/plugin-manager" target="_blank" rel="noopener noreferrer">
+            <span>Plugins</span>
+            <litgui-icon class="link-icon" icon="mdi:open-in-new"></litgui-icon>
+          </a>
+          <a class="volumio-link-row" href="${this.aboutInfo.volumioUrl}/plugin/system_controller-system" target="_blank" rel="noopener noreferrer">
+            <span>System</span>
+            <litgui-icon class="link-icon" icon="mdi:open-in-new"></litgui-icon>
+          </a>
+        </div>
+      ` : ""}
 
       <div class="section">
         <div class="section-title">About</div>
