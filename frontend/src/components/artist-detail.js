@@ -273,7 +273,7 @@ class VolumioArtistDetail extends LitElement {
           ? html`
             <div class="albums-grid">
               ${this.items.map(item => {
-                const art = resolveArt(item.albumart || item.icon, this.volumioUrl, this.configEntryId);
+                const art = resolveArt(item.albumart, this.volumioUrl, this.configEntryId);
                 return html`
                   <volumio-album-card
                     title="${item.title || item.name || ""}"

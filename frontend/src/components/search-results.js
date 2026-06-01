@@ -402,7 +402,7 @@ class VolumioSearchResults extends LitElement {
     return html`
       <div class="items-grid">
         ${items.map(item => {
-          const art = resolveArt(item.albumart || item.icon, this.volumioUrl, this.configEntryId);
+          const art = resolveArt(item.albumart, this.volumioUrl, this.configEntryId);
           return html`
             <volumio-album-card
               title="${item.title || item.name || ""}"
@@ -424,7 +424,7 @@ class VolumioSearchResults extends LitElement {
     return html`
       <div class="items-list">
         ${items.map((item, i) => {
-          const art = resolveArt(item.albumart || item.icon, this.volumioUrl, this.configEntryId);
+          const art = resolveArt(item.albumart, this.volumioUrl, this.configEntryId);
           return html`
             <volumio-track-card
               .index=${i + 1}
