@@ -34,3 +34,4 @@ Screenshot*.png
 # Generated / local files (re-added clean — were UTF-16 corrupted)
 QUICKREF.md
 deploy.sh
+frontend/src/version.js

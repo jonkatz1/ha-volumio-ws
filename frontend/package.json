@@ -5,6 +5,9 @@
   "description": "Volumio panel frontend for Home Assistant",
   "type": "module",
   "scripts": {
+    "sync-version": "node scripts/sync-version.js",
+    "postinstall": "npm run sync-version",
+    "prebuild": "npm run sync-version",
     "build": "rollup -c",
     "watch": "rollup -c --watch"
   },
