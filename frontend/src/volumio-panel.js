@@ -14,7 +14,7 @@ import { sharedStyles } from "./styles/shared-styles.js";
 import { detectQuality } from "./utils/quality-utils.js";
 import { resolveArt } from "./utils/format-utils.js";
 import { safeGet, safeSet, safeRemove } from "./utils/storage-utils.js";
-import { HAAdapter } from "./adapters/ha-adapter.js";
+import { createAdapter } from "./adapters/index.js";
 import "./components/top-bar.js";
 import "./components/left-nav.js";
 import "./components/player-bar.js";
@@ -562,7 +562,10 @@ class VolumioPanel extends LitElement {
 
   constructor() {
     super();
-    this._adapter = new HAAdapter();
+    // Mode detection: standalone host page sets the `standalone` attribute
+    // on <volumio-panel>. HA panel registration sets no such attribute.
+    this._mode = this.hasAttribute("standalone") ? "volumio" : "ha";
+    this._adapter = createAdapter(this._mode);
     this._adapterConnected = false;
     this._queue = [];
     this._activeView = "now-playing";
@@ -640,28 +643,43 @@ class VolumioPanel extends LitElement {
     this._applyBreakpoint();
     window.addEventListener("resize", this._onResize);
     window.addEventListener("keydown", this._keyHandler);
-    // Queue subscription via adapter
+    // Queue subscription via adapter (both modes)
     this._adapter.onQueueChange((queue) => {
       this._queue = (queue || []).filter(Boolean);
     });
-    // Device list / active device updates from adapter (issue #38)
+    // Device list / active device updates (HA mode multi-device; the
+    // volumio adapter never fires this — standalone leaves _devices = []
+    // which keeps the top-bar device selector hidden).
     this._adapter.onDevicesChange(({ devices, activeId }) => {
       const previousId = this._activeDeviceId;
       const nextId = activeId || "";
       this._devices = devices;
       this._activeDeviceId = nextId;
       if (nextId && previousId && previousId !== nextId) {
-        // Switched between devices
         this._onActiveDeviceSwitched();
       } else if (nextId && !previousId && this._adapter.ready) {
-        // First device became active on initial load — kick off the
-        // initial source fetch directly rather than waiting for the
-        // next incidental hass change to trip updated().
         if (this._browseSources.length === 0) {
           this._fetchBrowseSources();
         }
       }
     });
+    // State subscription — required for standalone (push-driven re-render
+    // since there's no hass change to trip Lit's reactive cycle). Harmless
+    // in HA mode: HAAdapter also fires onStateChange on diffs, and
+    // requestUpdate is idempotent within a Lit batch.
+    this._adapter.onStateChange(() => {
+      this.requestUpdate();
+    });
+    // Standalone: connect immediately. HA mode connects in willUpdate
+    // when hass arrives.
+    if (this._mode === "volumio") {
+      this._adapter
+        .connect({ host: window.location.hostname, port: 3000 })
+        .catch((err) => {
+          console.error("[volumio-panel] Adapter connect failed:", err);
+        });
+      this._adapterConnected = true;
+    }
   }
 
   disconnectedCallback() {
@@ -689,6 +707,9 @@ class VolumioPanel extends LitElement {
   }
 
   willUpdate(changedProps) {
+    // HA mode only — standalone connects in connectedCallback and is
+    // push-driven (no hass updates to relay).
+    if (this._mode !== "ha") return;
     // Fire on either hass OR panel changes — Lit does not guarantee the
     // assignment order of reactive properties, so panel may arrive after
     // hass. Adapter must see late panel arrivals to resolve configEntryId.
@@ -705,29 +726,28 @@ class VolumioPanel extends LitElement {
     }
   }
 
-  updated(changedProps) {
-    // Side effects need to run on either hass OR panel changes since
-    // either one may flip _adapter.ready to true.
-    if (
-      this.hass &&
-      (changedProps.has("hass") || changedProps.has("panel"))
-    ) {
-      // Fetch real browse sources once adapter is ready
-      if (this._adapter.ready && this._browseSources.length === 0) {
-        this._fetchBrowseSources();
-      }
+  updated(/* changedProps */) {
+    // Side effects gate on adapter readiness rather than hass/panel
+    // changes. Works for both modes:
+    //   - HA:          hass change → updateHass → ready → render → updated
+    //   - Standalone:  pushState → onStateChange → requestUpdate → render → updated
+    // The downstream checks (browse-sources empty, uri changed) are
+    // already idempotent so running on every render is safe.
+    if (!this._adapter.ready) return;
 
-      // Track URI changes for favorite detection
-      const state = this._adapter.getState();
-      const uri = state.uri || null;
-      if (uri !== this._lastUri) {
-        this._lastUri = uri;
-        if (uri && this._adapter.ready) {
-          this._checkFavorite();
-          this._recordHistory(state);
-        } else {
-          this._isFavorite = false;
-        }
+    if (this._browseSources.length === 0) {
+      this._fetchBrowseSources();
+    }
+
+    const state = this._adapter.getState();
+    const uri = state.uri || null;
+    if (uri !== this._lastUri) {
+      this._lastUri = uri;
+      if (uri) {
+        this._checkFavorite();
+        this._recordHistory(state);
+      } else {
+        this._isFavorite = false;
       }
     }
   }
