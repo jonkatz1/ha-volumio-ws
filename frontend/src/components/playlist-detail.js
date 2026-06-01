@@ -432,7 +432,7 @@ class VolumioPlaylistDetail extends LitElement {
               <span></span>
             </div>
             ${this.tracks.map((track, i) => {
-              const art = resolveArt(track.albumart || track.icon, this.volumioUrl, this.configEntryId);
+              const art = resolveArt(track.albumart, this.volumioUrl, this.configEntryId);
               return html`
                 <div class="track-row-wrap">
                   <volumio-track-card

@@ -151,7 +151,7 @@ class VolumioBrowseSourceGrid extends LitElement {
     const icon = SOURCE_ICON_MAP[source.plugin_name]
       || SOURCE_ICON_MAP[source.plugin_type]
       || "mdi:music-box";
-    const art = resolveArt(source.albumart || source.icon, this.volumioUrl, this.configEntryId);
+    const art = resolveArt(source.albumart, this.volumioUrl, this.configEntryId);
 
     return html`
       <div
