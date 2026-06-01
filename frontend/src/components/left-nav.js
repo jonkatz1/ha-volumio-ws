@@ -13,6 +13,8 @@
  *   volumio-close-nav: {}
  */
 import { LitElement, html, css } from "lit";
+import { unsafeHTML } from "lit/directives/unsafe-html.js";
+import { wordmarkDark } from "../assets/branding/index.js";
 
 const SHORTCUTS = [
   { key: "favorites", label: "Favorites", icon: "mdi:heart" },
@@ -191,18 +193,18 @@ class VolumioLeftNav extends LitElement {
 
       /* ── Brand footer ──────────────── */
       .brand-link {
-        display: block;
-        text-align: center;
-        padding: 4px 0 2px;
-        font-size: 11px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 6px 0 2px;
+        opacity: 0.7;
         text-decoration: none;
-        color: var(--secondary-text-color, #888);
-        opacity: 0.5;
-        transition: opacity 0.15s;
       }
 
-      .brand-link:hover {
-        opacity: 0.8;
+      .brand-link svg {
+        width: 90px;
+        height: auto;
+        display: block;
       }
 
       .collapsed .brand-link {
@@ -275,7 +277,9 @@ class VolumioLeftNav extends LitElement {
             <ha-icon icon="${isCollapsed ? "mdi:pin" : "mdi:pin-off"}"></ha-icon>
             <span>${isCollapsed ? "Pin" : "Collapse"}</span>
           </button>
-          <a class="brand-link" href="https://litgui.com" target="_blank" rel="noopener noreferrer">litgui.com</a>
+          <a class="brand-link" href="https://litgui.com" target="_blank" rel="noopener noreferrer" aria-label="LitGUI — litgui.com">
+            ${unsafeHTML(wordmarkDark)}
+          </a>
         </div>
       </nav>
     `;
