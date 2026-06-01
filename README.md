@@ -171,5 +171,5 @@ For local testing, `deploy.sh` copies the bundle and backend files to your HA in
 
 ## Credits
 
-Built by [Jon Katz](https://github.com/jonkatz1)
+Built by [Jon Katz](https://github.com/jonkatz1) jonkatz.com
 Powered by [LitGUI](https://litgui.com)
