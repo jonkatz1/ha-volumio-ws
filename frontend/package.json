@@ -9,6 +9,9 @@
     "postinstall": "npm run sync-version",
     "prebuild": "npm run sync-version",
     "build": "rollup -c",
+    "prebuild:standalone": "npm run sync-version",
+    "build:standalone": "rollup -c rollup.standalone.js",
+    "build:all": "npm run build && npm run build:standalone",
     "watch": "rollup -c --watch"
   },
   "dependencies": {
