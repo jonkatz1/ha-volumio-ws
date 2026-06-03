@@ -343,6 +343,25 @@ export class HAAdapter {
     });
   }
 
+  /**
+   * Contract parity with VolumioAdapter.callMethod — present so the public
+   * adapter surface matches across transports. In HA mode this is a guarded
+   * no-op: invoking arbitrary Volumio controller/plugin methods over HA's
+   * backend is not wired (it would require a dedicated volumio_ws service +
+   * coordinator emit, which is a separate, gated contract item). The only
+   * caller today (the standalone UI-switch dropdown) is gated to standalone/
+   * kiosk mode and never reaches this in HA. Returns the adapter's uniform
+   * not-supported failure shape rather than throwing.
+   */
+  async callMethod(type, endpoint, method /*, data */) {
+    console.warn(
+      `[ha-adapter] callMethod not supported in HA mode (${endpoint}/${method})`
+    );
+    return {
+      response: { success: false, command: "callMethod", error: "not_supported_in_ha" },
+    };
+  }
+
   // ── Playback Commands ─────────────────────────────────────
 
   async play() {
