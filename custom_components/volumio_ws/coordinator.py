@@ -18,6 +18,7 @@ from .const import (
     WS_GET_QUEUE,
     WS_ADD_TO_QUEUE,
     WS_REMOVE_FROM_QUEUE,
+    WS_CALL_METHOD,
     WS_CLEAR_QUEUE,
     WS_MOVE_QUEUE,
     WS_PLAY,
@@ -492,6 +493,46 @@ class VolumioWebSocketCoordinator:
         if not sent:
             return {"success": False, "command": "clearQueue", "error": "not_connected"}
         return {"success": True, "command": "clearQueue"}
+
+    async def async_call_method(
+        self,
+        method_type: str,
+        endpoint: str,
+        method: str,
+        data: Any = None,
+    ) -> dict[str, Any]:
+        """Invoke a Volumio controller/plugin method over Socket.IO.
+
+        Fire-and-forget mirror of VolumioAdapter.callMethod. Many controller
+        methods do not reply on the pushMethod channel (e.g. appearance
+        setVolumio3UI answers with pushToastMessage + reloadUi, never
+        pushMethod), so this does not await a response. An await-capable
+        variant is a separate, gated contract item and is intentionally not
+        built here.
+
+        Wire shape (captured from Volumio's own frontend):
+            ["callMethod", { "type", "endpoint", "method", "data" }]
+
+        Args:
+            method_type: "controller" or "plugin" (varies by target).
+            endpoint: e.g. "miscellanea/appearance".
+            method: e.g. "setVolumio3UI".
+            data: Optional method-specific payload.
+
+        Returns:
+            Acknowledgment dict.
+        """
+        payload: dict[str, Any] = {
+            "type": method_type,
+            "endpoint": endpoint,
+            "method": method,
+        }
+        if data is not None:
+            payload["data"] = data
+        sent = await self.async_emit(WS_CALL_METHOD, payload)
+        if not sent:
+            return {"success": False, "command": "callMethod", "error": "not_connected"}
+        return {"success": True, "command": "callMethod"}
 
     async def async_play_index(self, index: int) -> dict[str, Any]:
         """Play the track at a specific queue position.

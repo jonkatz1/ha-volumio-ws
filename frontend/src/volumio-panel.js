@@ -797,6 +797,7 @@ class VolumioPanel extends LitElement {
         @volumio-playlist-remove-track=${this._onPlaylistRemoveTrack}
         @volumio-history-clear=${this._onHistoryClear}
         @volumio-setting-change=${this._onSettingChange}
+        @volumio-set-ui=${this._onSetUi}
       >
         <volumio-top-bar
           active-view="${this._activeView}"
@@ -874,6 +875,7 @@ class VolumioPanel extends LitElement {
           <volumio-left-nav
             .sources=${navSources}
             mode="flyout"
+            .standalone=${this._mode === "volumio"}
             active-view="${this._activeView}"
             active-source="${this._activeSourceUri}"
             @volumio-navigate=${this._onNavigate}
@@ -910,6 +912,7 @@ class VolumioPanel extends LitElement {
         <volumio-left-nav
           .sources=${sources}
           mode="${this._navMode}"
+          .standalone=${this._mode === "volumio"}
           active-view="${this._activeView}"
           active-source="${this._activeSourceUri}"
           @volumio-navigate=${this._onNavigate}
@@ -1213,6 +1216,8 @@ class VolumioPanel extends LitElement {
         click-action="${this._settingClickAction}"
         ?queue-thumbnails=${this._settingQueueThumbnails}
         browse-view-mode="${this._settingBrowseViewMode}"
+        .standalone=${this._mode === "volumio"}
+        ui-port="${typeof window !== "undefined" && window.location ? window.location.port : ""}"
         .aboutInfo=${{
           volumioUrl: this._adapter.getVolumioUrl(),
           entityId: this._adapter.entityId,
@@ -2119,6 +2124,45 @@ class VolumioPanel extends LitElement {
     }
   }
 
+  /**
+   * Switch Volumio's active UI via the appearance controller (standalone/
+   * kiosk only — the dropdown that fires this is gated to _mode "volumio").
+   * Fire-and-forget callMethod; Volumio replies with a toast + its own
+   * reloadUi, but that reload can strand the browser on the current
+   * (possibly deep-link) URL, so we explicitly navigate to root after a
+   * short delay to guarantee a clean landing on the newly-selected UI.
+   */
+  async _onSetUi(e) {
+    const { value, label } = e.detail || {};
+    if (!value) return;
+    try {
+      await this._adapter.callMethod(
+        "controller",
+        "miscellanea/appearance",
+        "setVolumio3UI",
+        { volumio3_ui: { value, label: label || value } }
+      );
+    } catch (err) {
+      console.error("[volumio-panel] UI switch failed:", err);
+      this._showToast("Failed to switch UI");
+      return;
+    }
+    this._showToast(`Switching to ${label || value}…`);
+    // Give Volumio a moment to persist the switch and start serving the new
+    // UI at root, then navigate there. Avoids the stale-URL reload that
+    // leaves the browser stuck on a settings deep-link.
+    setTimeout(() => {
+      if (typeof window !== "undefined" && window.location) {
+        // Redirect to the root web server (port 80) — NOT the current port.
+        // On :7777 Express always serves LitGUI regardless of the active-UI
+        // setting, so we drop the port to hit Volumio's root server, which
+        // serves whichever UI was just selected. hostname (not a hardcoded
+        // IP) keeps this correct on any user's device.
+        window.location.href = `http://${window.location.hostname}/playback`;
+      }
+    }, 1500);
+  }
+
   _onSourceSelect(e) {
     const { uri, name, plugin_name } = e.detail;
     this._activeSourceUri = uri || "";
@@ -2873,12 +2917,28 @@ class VolumioPanel extends LitElement {
 
     try {
       const result = await this._callService("search", { query });
+      // Stale-response guard: between firing the search and the response
+      // landing, the user may have cleared search, navigated to a detail/
+      // browse view, or started a different search. Only commit results if
+      // this is still the active query. Prevents a late response (or a
+      // response for a superseded query) from clobbering the current view.
+      if (this._searchQuery !== query) {
+        return;
+      }
       this._searchResults = result?.response || result || null;
     } catch (err) {
       console.error("[volumio-panel] Search failed:", err);
-      this._searchResults = null;
+      // Only surface the failure if this query is still active.
+      if (this._searchQuery === query) {
+        this._searchResults = null;
+      }
+    } finally {
+      // Clear the loading flag only if we're still on this query — a newer
+      // search will manage its own loading state.
+      if (this._searchQuery === query) {
+        this._searchLoading = false;
+      }
     }
-    this._searchLoading = false;
   }
 
   _onSearchClear() {

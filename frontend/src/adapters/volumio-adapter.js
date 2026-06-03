@@ -443,6 +443,36 @@ export class VolumioAdapter {
     }
   }
 
+  /**
+   * Invoke a Volumio controller/plugin method over Socket.IO.
+   * Fire-and-forget: Volumio does not reply on the pushMethod channel for
+   * many controller methods (e.g. appearance setVolumio3UI answers with
+   * pushToastMessage + reloadUi, never pushMethod), so this does NOT await
+   * a response — awaiting would hang until timeout. Callers that need a
+   * return value are not supported here yet (await variant is a separate,
+   * orchestrator-gated contract item).
+   *
+   * Wire shape (captured from Volumio's own frontend):
+   *   42["callMethod",{ type, endpoint, method, data }]
+   *
+   * @param {string} type     - "controller" or "plugin" (varies by target)
+   * @param {string} endpoint - e.g. "miscellanea/appearance"
+   * @param {string} method   - e.g. "setVolumio3UI"
+   * @param {object} [data]   - method-specific payload
+   * @returns {object} ack dict { success, command } mirroring _fireAndAck
+   */
+  async callMethod(type, endpoint, method, data) {
+    const payload = { type, endpoint, method };
+    if (data !== undefined && data !== null) payload.data = data;
+    const sent = await this._emit("callMethod", payload);
+    if (!sent) {
+      return {
+        response: { success: false, command: "callMethod", error: "not_connected" },
+      };
+    }
+    return { response: { success: true, command: "callMethod" } };
+  }
+
   _playlistTrackPayload(data) {
     const payload = { name: data.name, uri: data.uri };
     if (data.service != null) payload.service = data.service;
