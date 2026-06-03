@@ -21,6 +21,8 @@ class VolumioSettingsPanel extends LitElement {
       queueThumbnails: { type: Boolean, attribute: "queue-thumbnails" },
       browseViewMode: { type: String, attribute: "browse-view-mode" },
       aboutInfo: { type: Object },
+      standalone: { type: Boolean },
+      uiPort: { type: String, attribute: "ui-port" },
     };
   }
 
@@ -283,6 +285,30 @@ class VolumioSettingsPanel extends LitElement {
         margin: 0 6px;
         opacity: 0.4;
       }
+
+      /* ── UI switcher dropdown ──────── */
+      .ui-switch-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 0;
+        gap: 16px;
+      }
+      .ui-switch-select {
+        flex-shrink: 0;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+        background: var(--card-background-color, #1e1e1e);
+        color: var(--primary-text-color);
+        font-size: 14px;
+        cursor: pointer;
+        min-width: 160px;
+      }
+      .ui-switch-select:focus {
+        outline: none;
+        border-color: var(--primary-color, #03a9f4);
+      }
     `;
   }
 
@@ -292,6 +318,8 @@ class VolumioSettingsPanel extends LitElement {
     this.queueThumbnails = true;
     this.browseViewMode = "grid";
     this.aboutInfo = {};
+    this.standalone = false;
+    this.uiPort = "";
   }
 
   render() {
@@ -357,7 +385,26 @@ class VolumioSettingsPanel extends LitElement {
         </div>
       </div>
 
-      ${this.aboutInfo.volumioUrl ? html`
+      ${this.standalone ? html`
+        <div class="section">
+          <div class="section-title">User Interface</div>
+          <div class="ui-switch-row">
+            <div class="setting-info">
+              <div class="setting-label">Switch active interface</div>
+              <div class="setting-desc">Change which UI Volumio serves. The page will reload after switching.</div>
+            </div>
+            <select class="ui-switch-select" @change=${this._onUiSwitch}>
+              <option value="" selected disabled>Switch to…</option>
+              <option value="litgui">LitGUI</option>
+              <option value="manifest">Manifest</option>
+              <option value="contemporary">Contemporary</option>
+              <option value="classic">Classic</option>
+            </select>
+          </div>
+        </div>
+      ` : ""}
+
+      ${this.aboutInfo.volumioUrl && this.standalone && this.uiPort === "7777" ? html`
         <div class="section">
           <div class="section-title">Volumio System</div>
           <a class="volumio-link-row" href="${this.aboutInfo.volumioUrl}/plugin/miscellanea-my_music" target="_blank" rel="noopener noreferrer">
@@ -415,6 +462,24 @@ class VolumioSettingsPanel extends LitElement {
       detail: { key, value },
       bubbles: true, composed: true,
     }));
+  }
+
+  _onUiSwitch(e) {
+    const value = e.target.value;
+    if (!value) return;
+    const LABELS = {
+      litgui: "LitGUI",
+      manifest: "Manifest",
+      contemporary: "Contemporary",
+      classic: "Classic",
+    };
+    this.dispatchEvent(new CustomEvent("volumio-set-ui", {
+      detail: { value, label: LABELS[value] || value },
+      bubbles: true, composed: true,
+    }));
+    // Reset the select back to the prompt so re-selecting the same UI
+    // still fires a change event next time.
+    e.target.value = "";
   }
 }
 

@@ -37,6 +37,7 @@ class VolumioLeftNav extends LitElement {
       activeSource: { type: String, attribute: "active-source" },
       mode: { type: String },
       activeView: { type: String, attribute: "active-view" },
+      standalone: { type: Boolean },
     };
   }
 
@@ -219,6 +220,7 @@ class VolumioLeftNav extends LitElement {
     this.activeSource = "";
     this.mode = "pinned";
     this.activeView = "";
+    this.standalone = false;
   }
 
   render() {
@@ -272,15 +274,17 @@ class VolumioLeftNav extends LitElement {
           </button>
         </div>
 
-        <div class="nav-footer">
-          <button class="pin-btn" @click=${this._togglePin} title="${isCollapsed ? "Pin sidebar" : "Collapse sidebar"}">
-            <litgui-icon icon="${isCollapsed ? "mdi:pin" : "mdi:pin-off"}"></litgui-icon>
-            <span>${isCollapsed ? "Pin" : "Collapse"}</span>
-          </button>
-          <a class="brand-link" href="https://litgui.com" target="_blank" rel="noopener noreferrer" aria-label="LitGUI — litgui.com">
-            ${unsafeHTML(wordmarkDark)}
-          </a>
-        </div>
+        ${this.standalone ? "" : html`
+          <div class="nav-footer">
+            <button class="pin-btn" @click=${this._togglePin} title="${isCollapsed ? "Pin sidebar" : "Collapse sidebar"}">
+              <litgui-icon icon="${isCollapsed ? "mdi:pin" : "mdi:pin-off"}"></litgui-icon>
+              <span>${isCollapsed ? "Pin" : "Collapse"}</span>
+            </button>
+            <a class="brand-link" href="https://litgui.com" target="_blank" rel="noopener noreferrer" aria-label="LitGUI — litgui.com">
+              ${unsafeHTML(wordmarkDark)}
+            </a>
+          </div>
+        `}
       </nav>
     `;
   }
