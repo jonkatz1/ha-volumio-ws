@@ -31,12 +31,14 @@ class VolumioTopBar extends LitElement {
       breadcrumb: { type: Array },
       showBackButton: { type: Boolean, attribute: "show-back-button" },
       narrow: { type: Boolean },
+      mobile: { type: Boolean },
       searchQuery: { type: String, attribute: "search-query" },
       devices: { type: Array },
       activeDeviceId: { type: String, attribute: "active-device-id" },
       _searchValue: { type: String, state: true },
       _searchFocused: { type: Boolean, state: true },
       _deviceMenuOpen: { type: Boolean, state: true },
+      _mobileSearchOpen: { type: Boolean, state: true },
     };
   }
 
@@ -332,6 +334,109 @@ class VolumioTopBar extends LitElement {
           font-size: 13px;
         }
       }
+
+      /* ── Mobile top-bar (T48 Phase 1b) ─────────── */
+      .topbar.mobile {
+        display: flex;
+        align-items: center;
+        height: var(--volumio-topbar-height, 48px);
+        padding: 0 var(--volumio-space-sm, 8px);
+        background: var(--card-background-color, #1e1e1e);
+        border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+        gap: var(--volumio-space-xs, 4px);
+      }
+
+      .topbar.mobile .icon-btn {
+        width: 44px;
+        height: 44px;
+      }
+
+      .mobile-quick-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 44px;
+        padding: 0 12px;
+        border: none;
+        background: transparent;
+        color: var(--primary-text-color);
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        border-radius: 8px;
+        white-space: nowrap;
+      }
+      .mobile-quick-btn:hover {
+        background: var(--divider-color, rgba(255, 255, 255, 0.08));
+      }
+      .mobile-quick-btn.active {
+        color: var(--primary-color, #03a9f4);
+      }
+      .mobile-quick-btn litgui-icon {
+        --mdc-icon-size: 22px;
+      }
+
+      .mobile-search-row {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px 12px;
+        background: var(--card-background-color, #1e1e1e);
+        border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+      }
+
+      .mobile-search-row .search-field {
+        height: 44px;
+        min-width: 0;
+        max-width: none;
+        flex: 1;
+        border-radius: 22px;
+        padding: 0 14px;
+      }
+
+      .mobile-search-row .search-field input {
+        font-size: 16px; /* prevent iOS zoom-on-focus */
+      }
+
+      .mobile-search-row .search-clear {
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
+      }
+
+      .mobile-recent {
+        padding: 4px 0;
+      }
+
+      .mobile-recent .recent-label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--secondary-text-color);
+        padding: 4px 4px;
+      }
+
+      .mobile-recent .recent-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 4px 0;
+      }
+
+      .mobile-recent .recent-chip {
+        min-height: 44px;
+        padding: 8px 16px;
+        border-radius: 22px;
+        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+        background: transparent;
+        color: var(--primary-text-color);
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .mobile-recent .recent-chip:hover {
+        background: var(--divider-color, rgba(255, 255, 255, 0.08));
+      }
     `;
   }
 
@@ -341,12 +446,14 @@ class VolumioTopBar extends LitElement {
     this.breadcrumb = [];
     this.showBackButton = false;
     this.narrow = false;
+    this.mobile = false;
     this.searchQuery = "";
     this.devices = [];
     this.activeDeviceId = "";
     this._searchValue = "";
     this._searchFocused = false;
     this._deviceMenuOpen = false;
+    this._mobileSearchOpen = false;
     this._debounceTimer = null;
     // Resilient against corrupt/quota-exceeded localStorage (issue #40)
     let recent = [];
@@ -380,6 +487,7 @@ class VolumioTopBar extends LitElement {
   }
 
   render() {
+    if (this.mobile) return this._renderMobile();
     return html`
       <div class="topbar">
         <button
@@ -457,6 +565,103 @@ class VolumioTopBar extends LitElement {
 
       ${this.breadcrumb.length > 0 ? this._renderBreadcrumb() : ""}
     `;
+  }
+
+  _renderMobile() {
+    // Reuse the existing search markup, handlers (_onSearchInput, _onSearchKeydown,
+    // _clearSearch, _executeSearch, _useRecentSearch) and _recentSearches state.
+    // No duplicated logic — only the chrome shape differs from desktop.
+    return html`
+      <div class="topbar mobile">
+        <button
+          class="icon-btn"
+          @click=${this._toggleNav}
+          title="Toggle navigation"
+          aria-label="Toggle navigation sidebar"
+        >
+          <litgui-icon icon="mdi:menu"></litgui-icon>
+        </button>
+
+        <button
+          class="mobile-quick-btn ${this.activeView === "now-playing" ? "active" : ""}"
+          @click=${() => this._navigate("now-playing")}
+          title="Now Playing"
+          aria-label="Now Playing"
+        >
+          <litgui-icon icon="mdi:music-note"></litgui-icon>
+          <span>Now Playing</span>
+        </button>
+
+        <div class="spacer"></div>
+
+        <button
+          class="icon-btn"
+          @click=${this._toggleMobileSearch}
+          title="Search"
+          aria-label="Toggle search"
+          aria-expanded=${this._mobileSearchOpen ? "true" : "false"}
+        >
+          <litgui-icon icon="mdi:magnify"></litgui-icon>
+        </button>
+
+        <button
+          class="icon-btn"
+          @click=${this._toggleQueue}
+          title="Toggle queue"
+          aria-label="Toggle queue panel"
+        >
+          <litgui-icon icon="mdi:playlist-music"></litgui-icon>
+        </button>
+      </div>
+
+      ${this._mobileSearchOpen ? html`
+        <div class="mobile-search-row">
+          <div class="search-field" @click=${this._focusSearch}>
+            <litgui-icon icon="mdi:magnify"></litgui-icon>
+            <input
+              type="text"
+              placeholder="Search..."
+              aria-label="Search music"
+              .value=${this._searchValue}
+              @input=${this._onSearchInput}
+              @focus=${this._onSearchFieldFocus}
+              @blur=${this._onSearchFieldBlur}
+              @keydown=${this._onSearchKeydown}
+            />
+            <button
+              class="search-clear"
+              @click=${() => { this._clearSearch(); this._mobileSearchOpen = false; }}
+              title="Close search"
+              aria-label="Close search"
+            >✕</button>
+          </div>
+          ${!this._searchValue && this._recentSearches.length > 0 ? html`
+            <div class="mobile-recent">
+              <div class="recent-label">Recent</div>
+              <div class="recent-chips">
+                ${this._recentSearches.slice(0, 10).map(q => html`
+                  <button
+                    class="recent-chip"
+                    @mousedown=${(e) => { e.preventDefault(); this._useRecentSearch(q); this._mobileSearchOpen = false; }}
+                  >${q}</button>
+                `)}
+              </div>
+            </div>
+          ` : ""}
+        </div>
+      ` : ""}
+    `;
+  }
+
+  _toggleMobileSearch() {
+    const opening = !this._mobileSearchOpen;
+    this._mobileSearchOpen = opening;
+    if (opening) {
+      this.updateComplete.then(() => {
+        const input = this.shadowRoot?.querySelector(".mobile-search-row .search-field input");
+        if (input) input.focus();
+      });
+    }
   }
 
   _renderDeviceSelector() {

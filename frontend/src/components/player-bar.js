@@ -43,8 +43,11 @@ class VolumioPlayerBar extends LitElement {
       source: { type: String },
       volumeEnabled: { type: Boolean, attribute: "volume-enabled" },
       isFavorite: { type: Boolean, attribute: "is-favorite" },
+      mini: { type: Boolean },
       _displayPosition: { type: Number, state: true },
       _isDragging: { type: Boolean, state: true },
+      _miniVolOpen: { type: Boolean, state: true },
+      _miniMenuOpen: { type: Boolean, state: true },
     };
   }
 
@@ -426,6 +429,186 @@ class VolumioPlayerBar extends LitElement {
         background: var(--secondary-text-color, #888);
         animation: shimmer 1.4s ease-in-out infinite;
       }
+
+      /* ── Mini mode (T48 Phase 2a) ──────────── */
+      .mini-bar {
+        box-sizing: border-box;
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: calc(var(--volumio-mobile-mini-height, 64px) + env(safe-area-inset-bottom, 0px));
+        padding: 0 12px env(safe-area-inset-bottom, 0px);
+        background: var(--card-background-color, #1a1a1a);
+      }
+      .mini-progress {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: var(--divider-color, rgba(255, 255, 255, 0.12));
+      }
+      .mini-progress-fill {
+        height: 100%;
+        background: var(--primary-color, #03a9f4);
+      }
+      .mini-art {
+        width: 40px;
+        height: 40px;
+        border-radius: 6px;
+        object-fit: cover;
+        flex: 0 0 auto;
+        background: var(--divider-color, #333);
+      }
+      .mini-art-ph {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .mini-art-ph litgui-icon {
+        --mdc-icon-size: 22px;
+        color: var(--secondary-text-color);
+      }
+      .mini-main {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        cursor: pointer;
+      }
+      .mini-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .mini-title {
+        font-size: 13.5px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.3;
+      }
+      .mini-artist {
+        font-size: 12px;
+        color: var(--secondary-text-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.3;
+      }
+      .mini-play {
+        width: 44px;
+        height: 44px;
+        flex: 0 0 auto;
+        border: none;
+        background: transparent;
+        color: var(--primary-text-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+      }
+      .mini-play litgui-icon {
+        --mdc-icon-size: 30px;
+      }
+
+      /* ── Mini controls (T48 Phase 2c) ──────── */
+      .mini-controls {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        flex: 0 0 auto;
+      }
+      .mini-controls .ctrl {
+        width: 40px;
+        height: 40px;
+        flex: 0 0 auto;
+        border: none;
+        background: transparent;
+        color: var(--primary-text-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        border-radius: 6px;
+      }
+      .mini-controls .ctrl:hover {
+        background: var(--divider-color, rgba(255, 255, 255, 0.08));
+      }
+      .mini-controls .ctrl.active {
+        color: var(--primary-color, #03a9f4);
+      }
+      .mini-controls .ctrl litgui-icon {
+        --mdc-icon-size: 24px;
+      }
+
+      .mini-vol-pop {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        right: 48px;
+        background: var(--card-background-color, #1a1a1a);
+        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+        border-radius: 10px;
+        padding: 12px 8px;
+        display: flex;
+        justify-content: center;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+        z-index: 20;
+      }
+      .mini-vol-slider {
+        writing-mode: vertical-lr;
+        direction: rtl;
+        width: 24px;
+        height: 120px;
+      }
+
+      .mini-menu {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        right: 0;
+        min-width: 180px;
+        background: var(--card-background-color, #1a1a1a);
+        border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+        border-radius: 10px;
+        padding: 4px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+        z-index: 20;
+      }
+      .mini-menu-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 44px;
+        padding: 0 12px;
+        border: none;
+        background: transparent;
+        color: var(--primary-text-color);
+        width: 100%;
+        cursor: pointer;
+        border-radius: 6px;
+        font-size: 14px;
+      }
+      .mini-menu-row:hover {
+        background: var(--divider-color, rgba(255, 255, 255, 0.08));
+      }
+      .mini-menu-row.active {
+        color: var(--primary-color, #03a9f4);
+      }
+      .mini-menu-row litgui-icon {
+        --mdc-icon-size: 22px;
+        flex: 0 0 auto;
+      }
+      .mini-menu-row .row-label-trailing {
+        margin-left: auto;
+        color: var(--secondary-text-color);
+        font-size: 12px;
+      }
     `;
   }
 
@@ -446,9 +629,12 @@ class VolumioPlayerBar extends LitElement {
     this.source = "";
     this.volumeEnabled = true;
     this.isFavorite = false;
+    this.mini = false;
     this._displayPosition = 0;
     this._isDragging = false;
     this._rafId = null;
+    this._miniVolOpen = false;
+    this._miniMenuOpen = false;
   }
 
   connectedCallback() {
@@ -494,6 +680,7 @@ class VolumioPlayerBar extends LitElement {
   // ── Render ─────────────────────────────────────────────────
 
   render() {
+    if (this.mini) return this._renderMini();
     if (this.playerState === "unavailable") {
       return html`
         <div class="skeleton-bar-row" aria-busy="true" aria-label="Loading">
@@ -633,6 +820,98 @@ class VolumioPlayerBar extends LitElement {
                 @change=${this._onVolumeChange}
                 aria-label="Volume: ${this.volume}%"
               />
+            </div>
+          ` : ""}
+        </div>
+      </div>
+    `;
+  }
+
+  _renderMini() {
+    const isActive = this.playerState === "playing" || this.playerState === "paused";
+    if (!isActive) return html``;            // hidden when idle/unavailable/off
+    const isPlaying = this.playerState === "playing";
+    const progressPct = this.duration > 0
+      ? Math.min(100, (this._displayPosition / this.duration) * 100)
+      : 0;
+    const repeatLabel = this.repeat === "one" ? "One" : this.repeat === "all" ? "All" : "Off";
+    return html`
+      <div class="mini-bar" @click=${() => { this._miniVolOpen = false; this._miniMenuOpen = false; }}>
+        <div class="mini-progress"><div class="mini-progress-fill" style="width:${progressPct}%"></div></div>
+        <div class="mini-main" @click=${this._goToNowPlaying}>
+          ${this.albumArt
+            ? html`<img class="mini-art" src="${this.albumArt}" alt="" />`
+            : html`<div class="mini-art mini-art-ph"><litgui-icon icon="mdi:music-note"></litgui-icon></div>`}
+          <div class="mini-info">
+            <div class="mini-title">${this.title || "—"}</div>
+            <div class="mini-artist">${this.artist || ""}</div>
+          </div>
+        </div>
+        <div class="mini-controls">
+          <button class="ctrl"
+            @click=${(e) => { e.stopPropagation(); this._command("prev"); }}
+            aria-label="Previous track"
+          >
+            <litgui-icon icon="mdi:skip-previous"></litgui-icon>
+          </button>
+          <button class="ctrl"
+            @click=${(e) => { e.stopPropagation(); this._command("play_pause"); }}
+            aria-label="${isPlaying ? "Pause" : "Play"}"
+          >
+            <litgui-icon icon="${isPlaying ? "mdi:pause" : "mdi:play"}"></litgui-icon>
+          </button>
+          <button class="ctrl"
+            @click=${(e) => { e.stopPropagation(); this._command("next"); }}
+            aria-label="Next track"
+          >
+            <litgui-icon icon="mdi:skip-next"></litgui-icon>
+          </button>
+          ${this.volumeEnabled ? html`
+            <button class="ctrl ${this._miniVolOpen ? "active" : ""}"
+              @click=${(e) => { e.stopPropagation(); this._miniVolOpen = !this._miniVolOpen; this._miniMenuOpen = false; }}
+              aria-label="Volume"
+              aria-expanded=${this._miniVolOpen ? "true" : "false"}
+            >
+              <litgui-icon icon="${this.muted ? "mdi:volume-mute" : "mdi:volume-high"}"></litgui-icon>
+            </button>
+          ` : ""}
+          <button class="ctrl ${this._miniMenuOpen ? "active" : ""}"
+            @click=${(e) => { e.stopPropagation(); this._miniMenuOpen = !this._miniMenuOpen; this._miniVolOpen = false; }}
+            aria-label="More controls"
+            aria-expanded=${this._miniMenuOpen ? "true" : "false"}
+          >
+            <litgui-icon icon="mdi:dots-vertical"></litgui-icon>
+          </button>
+          ${this.volumeEnabled && this._miniVolOpen ? html`
+            <div class="mini-vol-pop" @click=${(e) => e.stopPropagation()}>
+              <input class="mini-vol-slider" type="range" min="0" max="100"
+                .value=${String(this.volume)}
+                @input=${this._onVolumeInput} @change=${this._onVolumeChange}
+                aria-label="Volume: ${this.volume}%" />
+            </div>
+          ` : ""}
+          ${this._miniMenuOpen ? html`
+            <div class="mini-menu" @click=${(e) => e.stopPropagation()}>
+              <button class="mini-menu-row ${this.shuffle ? "active" : ""}"
+                @click=${(e) => { e.stopPropagation(); this._command("shuffle_set", !this.shuffle); }}
+              >
+                <litgui-icon icon="mdi:shuffle-variant"></litgui-icon>
+                <span>Shuffle</span>
+                <span class="row-label-trailing">${this.shuffle ? "On" : "Off"}</span>
+              </button>
+              <button class="mini-menu-row ${this.repeat !== "off" ? "active" : ""}"
+                @click=${(e) => { e.stopPropagation(); this._cycleRepeat(); }}
+              >
+                <litgui-icon icon="${this.repeat === "one" ? "mdi:repeat-once" : "mdi:repeat"}"></litgui-icon>
+                <span>Repeat</span>
+                <span class="row-label-trailing">${repeatLabel}</span>
+              </button>
+              <button class="mini-menu-row ${this.isFavorite ? "active" : ""}"
+                @click=${(e) => this._toggleFavorite(e)}
+              >
+                <litgui-icon icon="${this.isFavorite ? "mdi:heart" : "mdi:heart-outline"}"></litgui-icon>
+                <span>Favorite</span>
+              </button>
             </div>
           ` : ""}
         </div>

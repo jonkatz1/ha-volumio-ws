@@ -65,6 +65,7 @@ class VolumioPanel extends LitElement {
       _queue: { type: Array, state: true },
       _activeView: { type: String, state: true },
       _navMode: { type: String, state: true },
+      _isMobile: { type: Boolean, state: true },
       _showQueue: { type: Boolean, state: true },
       _showNavFlyout: { type: Boolean, state: true },
       _isFavorite: { type: Boolean, state: true },
@@ -558,6 +559,75 @@ class VolumioPanel extends LitElement {
           font-size: 14px;
           color: var(--secondary-text-color);
         }
+
+        /* ── Mobile shell (T48 Phase 1) ──────────── */
+        .shell-mobile {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          overflow: hidden;
+        }
+        .shell-mobile .mobile-main {
+          flex: 1;
+          overflow-y: auto;
+          overflow-x: hidden;
+          min-height: 0;
+        }
+        .shell-mobile .flyout-panel.left {
+          width: var(--volumio-nav-width-pinned, 240px);
+        }
+        .shell-mobile .flyout-panel.right {
+          width: var(--volumio-mobile-drawer-width, min(320px, 86vw));
+        }
+        /* Left drawer: bound height only — volumio-left-nav scrolls internally via .nav-scroll */
+        .shell-mobile .flyout-panel.left {
+          height: 100dvh;
+          max-height: 100dvh;
+          overflow: hidden;
+        }
+        /* Right drawer (queue): no inner scroller, so the panel scrolls itself */
+        .shell-mobile .flyout-panel.right {
+          height: 100dvh;
+          max-height: 100dvh;
+          overflow-y: auto;
+          overflow-x: hidden;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
+          padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        .shell-mobile .flyout-panel.left {
+          padding-top: env(safe-area-inset-top, 0px);
+        }
+        .shell-mobile .flyout-panel.left,
+        .shell-mobile .flyout-panel.right {
+          background: var(--card-background-color, #1a1a1a);
+        }
+
+        .shell-mobile .mobile-row2 {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          min-height: 40px;
+          padding: 0 4px;
+          background: var(--card-background-color, #1a1a1a);
+          border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.08));
+        }
+        .shell-mobile .mobile-back {
+          width: 40px;
+          height: 40px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: none;
+          background: transparent;
+          color: var(--primary-text-color);
+          cursor: pointer;
+          flex: 0 0 auto;
+        }
+        .shell-mobile .mobile-row2 volumio-breadcrumb-bar {
+          flex: 1;
+          min-width: 0;
+        }
       `,
     ];
   }
@@ -572,6 +642,7 @@ class VolumioPanel extends LitElement {
     this._queue = [];
     this._activeView = "now-playing";
     this._navMode = "collapsed";
+    this._isMobile = false;
     this._showQueue = false;
     this._showNavFlyout = false;
     this._isFavorite = false;
@@ -696,6 +767,7 @@ class VolumioPanel extends LitElement {
   };
 
   _applyBreakpoint() {
+    this._isMobile = window.innerWidth <= 768;
     const w = window.innerWidth;
     if (w >= 1400) {
       this._navMode = "pinned";
@@ -779,10 +851,13 @@ class VolumioPanel extends LitElement {
   // ── Render ────────────────────────────────────────────────
 
   render() {
+    return this._isMobile ? this._renderMobileLayout() : this._renderDesktopLayout();
+  }
+
+  _renderDesktopLayout() {
     const s = this._adapter.getState();
     const qualityInfo = this._getQualityInfo();
     const artUrl = resolveArt(s.albumArt, "", this._activeDeviceId);
-    const volumioUrl = this._adapter.getVolumioUrl();
 
     const navSources = this._getNavSources();
 
@@ -837,11 +912,7 @@ class VolumioPanel extends LitElement {
                     ></volumio-breadcrumb-bar>
                   `
                 : ""}
-            ${this._activeView === "album-detail" || this._activeView === "artist-detail"
-              ? this._renderCenterContent(s, qualityInfo, artUrl)
-              : this._searchQuery
-                ? this._renderSearchView(s, volumioUrl)
-                : this._renderCenterContent(s, qualityInfo, artUrl)}
+            ${this._renderCenterContent(s, qualityInfo, artUrl)}
           </div>
 
           ${this._renderRightZone()}
@@ -904,6 +975,163 @@ class VolumioPanel extends LitElement {
     `;
   }
 
+  // True in exactly the cases where _onBack does something other than land
+  // on now-playing. Mirrors the branch structure of _onBack so the mobile
+  // back button only appears when it would actually move you.
+  get _canGoBack() {
+    if (this._searchTrail.length > 0 &&
+        (this._activeView === "album-detail" || this._activeView === "artist-detail")) return true;
+    if (this._searchQuery) return true;
+    if (this._activeView === "playlist-detail") return true;
+    if (this._activeView === "album-detail" || this._activeView === "artist-detail") return true;
+    if (this._browseStack.length >= 1) return true;
+    return false;
+  }
+
+  // Mirrors the breadcrumb ternary's condition so visibility and the
+  // rendered trail never disagree.
+  get _mobileHasBreadcrumb() {
+    const t = (this._searchTrail.length > 0 &&
+               (this._activeView === "album-detail" || this._activeView === "artist-detail"));
+    const b = (this._browseStack.length > 0 &&
+               (this._activeView === "browse" || this._activeView === "album-detail" || this._activeView === "artist-detail"));
+    return t || b;
+  }
+
+  _renderMobileLayout() {
+    const s = this._adapter.getState();
+    const qualityInfo = this._getQualityInfo();
+    const artUrl = resolveArt(s.albumArt, "", this._activeDeviceId);
+
+    const navSources = this._getNavSources();
+
+    return html`
+      <div class="shell-mobile"
+        @volumio-context-menu=${this._onContextMenuRequest}
+        @volumio-playlist-select=${this._onPlaylistSelect}
+        @volumio-playlist-create=${this._onPlaylistCreate}
+        @volumio-playlist-play=${this._onPlaylistPlay}
+        @volumio-playlist-enqueue=${this._onPlaylistEnqueue}
+        @volumio-playlist-delete=${this._onPlaylistDelete}
+        @volumio-playlist-remove-track=${this._onPlaylistRemoveTrack}
+        @volumio-history-clear=${this._onHistoryClear}
+        @volumio-setting-change=${this._onSettingChange}
+        @volumio-set-ui=${this._onSetUi}
+      >
+        <volumio-top-bar
+          ?mobile=${true}
+          active-view="${this._activeView}"
+          .breadcrumb=${[]}
+          ?narrow=${this.narrow}
+          ?show-back-button=${this._browseStack.length > 0 || this._activeView === "album-detail" || this._activeView === "artist-detail" || this._activeView === "playlist-detail" || !!this._searchQuery}
+          .devices=${this._devices}
+          active-device-id="${this._activeDeviceId}"
+          @volumio-navigate=${this._onNavigate}
+          @volumio-toggle-nav=${this._onToggleNav}
+          @volumio-toggle-queue=${this._onToggleQueue}
+          @volumio-back=${this._onBack}
+          @volumio-search=${this._onSearch}
+          @volumio-search-clear=${this._onSearchClear}
+          @volumio-device-change=${this._onDeviceChange}
+        ></volumio-top-bar>
+
+        ${(this._canGoBack || this._mobileHasBreadcrumb) ? html`
+          <div class="mobile-row2">
+            ${this._canGoBack ? html`
+              <button class="mobile-back" @click=${this._onBack} aria-label="Back">
+                <litgui-icon icon="mdi:arrow-left"></litgui-icon>
+              </button>
+            ` : ""}
+            ${this._mobileHasBreadcrumb ? html`
+              ${this._searchTrail.length > 0 && (this._activeView === "album-detail" || this._activeView === "artist-detail")
+                ? html`
+                    <volumio-breadcrumb-bar
+                      .trail=${this._searchTrail}
+                      @volumio-breadcrumb-click=${this._onSearchBreadcrumbClick}
+                    ></volumio-breadcrumb-bar>
+                  `
+                : (this._browseStack.length > 0 &&
+                   (this._activeView === "browse" ||
+                    this._activeView === "album-detail" ||
+                    this._activeView === "artist-detail"))
+                  ? html`
+                      <volumio-breadcrumb-bar
+                        .trail=${this._browseStack}
+                        @volumio-breadcrumb-click=${this._onBreadcrumbClick}
+                      ></volumio-breadcrumb-bar>
+                    `
+                  : ""}
+            ` : ""}
+          </div>
+        ` : ""}
+
+        <div class="mobile-main">
+          ${this._renderCenterContent(s, qualityInfo, artUrl)}
+        </div>
+
+        <volumio-player-bar
+          mini
+          player-state="${s.state}"
+          title="${s.title}"
+          artist="${s.artist}"
+          album-art="${artUrl}"
+          .duration=${s.duration}
+          .position=${s.position}
+          position-updated-at="${s.positionUpdatedAt}"
+          .volume=${s.volume}
+          ?muted=${s.muted}
+          ?shuffle=${s.shuffle}
+          repeat="${s.repeat}"
+          .quality=${qualityInfo}
+          source="${s.source}"
+          .volumeEnabled=${s.volumeEnabled}
+          .isFavorite=${this._isFavorite}
+          @volumio-command=${this._onCommand}
+          @volumio-navigate=${this._onNavigate}
+          @volumio-toggle-favorite=${this._onToggleFavorite}
+        ></volumio-player-bar>
+
+        ${this._showNavFlyout ? html`
+          <div class="flyout-scrim" @click=${() => this._showNavFlyout = false}></div>
+          <div class="flyout-panel left">
+            <volumio-left-nav
+              .sources=${navSources}
+              mode="flyout"
+              .standalone=${this._mode === "volumio"}
+              active-view="${this._activeView}"
+              active-source="${this._activeSourceUri}"
+              @volumio-navigate=${this._onNavigate}
+              @volumio-nav-pin=${this._onNavPin}
+            ></volumio-left-nav>
+          </div>
+        ` : ""}
+
+        ${this._showQueue ? html`
+          <div class="flyout-scrim" @click=${() => this._showQueue = false}></div>
+          <div class="flyout-panel right">${this._renderQueuePanel()}</div>
+        ` : ""}
+
+        <volumio-context-menu
+          ?open=${this._ctxOpen}
+          .x=${this._ctxX}
+          .y=${this._ctxY}
+          .items=${this._ctxItems}
+          .submenuItems=${this._ctxPlaylists}
+          @volumio-context-action=${this._onContextAction}
+          @volumio-context-close=${() => { this._ctxOpen = false; }}
+        ></volumio-context-menu>
+
+        <volumio-toast-notification
+          ?open=${this._toastOpen}
+          message="${this._toastMessage}"
+          undo-action="${this._toastUndo || ""}"
+          @volumio-toast-undo=${this._onToastUndo}
+          @volumio-toast-dismiss=${() => { this._toastOpen = false; }}
+        ></volumio-toast-notification>
+      </div>
+    `;
+  }
+
   _renderLeftZone(sources) {
     if (this._navMode === "hidden") return html``;
 
@@ -924,90 +1152,91 @@ class VolumioPanel extends LitElement {
 
   _renderRightZone() {
     if (!this._showQueue) return html``;
+    return html`<div class="right-zone pinned">${this._renderQueuePanel()}</div>`;
+  }
 
+  _renderQueuePanel() {
     const s = this._adapter.getState();
     const currentPosition = s.queuePosition;
     const volumioUrl = this._adapter.getVolumioUrl();
 
     return html`
-      <div class="right-zone pinned">
-        <div class="queue-panel">
-          <div class="queue-header">
-            <span class="queue-title">Queue</span>
-            <span class="queue-count">${this._queue.length} track${this._queue.length !== 1 ? "s" : ""}</span>
-            <div class="queue-actions">
-              <button class="queue-clear-btn" @click=${this._onQueueSaveStart} title="Save as playlist">
-                <litgui-icon icon="mdi:content-save-outline"></litgui-icon>
-              </button>
-              <button class="queue-clear-btn" @click=${this._onQueueClearClick} title="Clear queue">
-                <litgui-icon icon="mdi:delete-outline"></litgui-icon>
-              </button>
+      <div class="queue-panel">
+        <div class="queue-header">
+          <span class="queue-title">Queue</span>
+          <span class="queue-count">${this._queue.length} track${this._queue.length !== 1 ? "s" : ""}</span>
+          <div class="queue-actions">
+            <button class="queue-clear-btn" @click=${this._onQueueSaveStart} title="Save as playlist">
+              <litgui-icon icon="mdi:content-save-outline"></litgui-icon>
+            </button>
+            <button class="queue-clear-btn" @click=${this._onQueueClearClick} title="Clear queue">
+              <litgui-icon icon="mdi:delete-outline"></litgui-icon>
+            </button>
+          </div>
+        </div>
+        ${this._queueConfirmClear ? html`
+          <div class="confirm-bar">
+            <span>Clear queue?</span>
+            <div class="confirm-btns">
+              <button class="btn-yes" @click=${this._onQueueClear}>Yes</button>
+              <button class="btn-no" @click=${() => { this._queueConfirmClear = false; }}>No</button>
             </div>
           </div>
-          ${this._queueConfirmClear ? html`
-            <div class="confirm-bar">
-              <span>Clear queue?</span>
-              <div class="confirm-btns">
-                <button class="btn-yes" @click=${this._onQueueClear}>Yes</button>
-                <button class="btn-no" @click=${() => { this._queueConfirmClear = false; }}>No</button>
-              </div>
-            </div>
-          ` : ""}
-          ${this._queueSaveOpen ? html`
-            <div class="save-dialog">
-              <input
-                type="text"
-                placeholder="Playlist name"
-                .value=${this._queueSaveName}
-                @input=${(e) => { this._queueSaveName = e.target.value; }}
-                @keydown=${(e) => { if (e.key === "Enter") this._onQueueSaveConfirm(); if (e.key === "Escape") this._queueSaveOpen = false; }}
-              />
-              <button @click=${this._onQueueSaveConfirm}>Save</button>
-            </div>
-          ` : ""}
-          <div class="queue-list">
-            ${this._queue.length === 0
-              ? html`
-                <div class="queue-empty-state">
-                  <litgui-icon icon="mdi:playlist-music-outline"></litgui-icon>
-                  <div>Queue is empty</div>
-                  <div>Browse for music to start playing.</div>
-                  <button class="browse-btn" @click=${() => this._onNavigate({ detail: { view: "browse" } })}>Browse</button>
-                </div>`
-              : this._queue.map((item, i) => {
-                if (!item) return "";
-                return html`
-                <div
-                  class="queue-item ${i === currentPosition ? "playing" : ""} ${i === this._dragIndex ? "dragging" : ""} ${i === this._dragOverIndex ? (this._dragIndex < i ? "drag-over-below" : "drag-over-above") : ""}"
-                  @click=${() => this._onQueueItemClick(i)}
-                  @contextmenu=${(e) => this._onQueueContextMenu(e, item, i)}
+        ` : ""}
+        ${this._queueSaveOpen ? html`
+          <div class="save-dialog">
+            <input
+              type="text"
+              placeholder="Playlist name"
+              .value=${this._queueSaveName}
+              @input=${(e) => { this._queueSaveName = e.target.value; }}
+              @keydown=${(e) => { if (e.key === "Enter") this._onQueueSaveConfirm(); if (e.key === "Escape") this._queueSaveOpen = false; }}
+            />
+            <button @click=${this._onQueueSaveConfirm}>Save</button>
+          </div>
+        ` : ""}
+        <div class="queue-list">
+          ${this._queue.length === 0
+            ? html`
+              <div class="queue-empty-state">
+                <litgui-icon icon="mdi:playlist-music-outline"></litgui-icon>
+                <div>Queue is empty</div>
+                <div>Browse for music to start playing.</div>
+                <button class="browse-btn" @click=${() => this._onNavigate({ detail: { view: "browse" } })}>Browse</button>
+              </div>`
+            : this._queue.map((item, i) => {
+              if (!item) return "";
+              return html`
+              <div
+                class="queue-item ${i === currentPosition ? "playing" : ""} ${i === this._dragIndex ? "dragging" : ""} ${i === this._dragOverIndex ? (this._dragIndex < i ? "drag-over-below" : "drag-over-above") : ""}"
+                @click=${() => this._onQueueItemClick(i)}
+                @contextmenu=${(e) => this._onQueueContextMenu(e, item, i)}
+              >
+                <div class="qi-drag"
+                  @pointerdown=${(e) => this._onDragStart(e, i)}
                 >
-                  <div class="qi-drag"
-                    @pointerdown=${(e) => this._onDragStart(e, i)}
-                  >
-                    <litgui-icon icon="mdi:drag-horizontal-variant"></litgui-icon>
-                  </div>
-                  ${this._settingQueueThumbnails ? html`
-                    <div class="qi-art">
-                      ${item.albumart
-                        ? html`<img src="${resolveArt(item.albumart, volumioUrl, this._activeDeviceId)}" alt="" loading="lazy" />`
-                        : html`<litgui-icon icon="mdi:music-note"></litgui-icon>`}
-                    </div>
-                  ` : ""}
-                  <div class="qi-info">
-                    <div class="qi-title">${item.name || item.title || "—"}</div>
-                    <div class="qi-artist">${item.artist || ""}</div>
-                  </div>
-                  ${i === currentPosition
-                    ? html`<div class="eq-bars"><span></span><span></span><span></span></div>`
-                    : ""}
-                  <button class="qi-remove" @click=${(e) => this._onQueueRemove(e, i)} title="Remove">
-                    <litgui-icon icon="mdi:close"></litgui-icon>
-                  </button>
+                  <litgui-icon icon="mdi:drag-horizontal-variant"></litgui-icon>
                 </div>
-              `;
-              })}
-          </div>
+                ${this._settingQueueThumbnails ? html`
+                  <div class="qi-art">
+                    ${item.albumart
+                      ? html`<img src="${resolveArt(item.albumart, volumioUrl, this._activeDeviceId)}" alt="" loading="lazy" />`
+                      : html`<litgui-icon icon="mdi:music-note"></litgui-icon>`}
+                  </div>
+                ` : ""}
+                <div class="qi-info">
+                  <div class="qi-title">${item.name || item.title || "—"}</div>
+                  <div class="qi-artist">${item.artist || ""}</div>
+                </div>
+                ${i === currentPosition
+                  ? html`<div class="eq-bars"><span></span><span></span><span></span></div>`
+                  : ""}
+                <button class="qi-remove" @click=${(e) => this._onQueueRemove(e, i)} title="Remove">
+                  <litgui-icon icon="mdi:close"></litgui-icon>
+                </button>
+              </div>
+            `;
+            })}
         </div>
       </div>
     `;
@@ -1015,6 +1244,9 @@ class VolumioPanel extends LitElement {
 
   _renderCenterContent(s, qualityInfo, artUrl) {
     const volumioUrl = this._adapter.getVolumioUrl();
+    if (this._activeView !== "album-detail" && this._activeView !== "artist-detail" && this._searchQuery) {
+      return this._renderSearchView(s, volumioUrl);
+    }
 
     switch (this._activeView) {
       case "now-playing":
@@ -1232,6 +1464,11 @@ class VolumioPanel extends LitElement {
   _onNavigate(e) {
     const { view, source, sourceUri, artist, album, pluginName } = e.detail || {};
     if (!view) return;
+
+    if (this._isMobile) {
+      this._showQueue = false;
+      this._showNavFlyout = false;
+    }
 
     switch (view) {
       case "browse":
