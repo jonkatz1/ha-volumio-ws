@@ -19,6 +19,7 @@
 import { LitElement, html, css } from "lit";
 import { resolveArt } from "../utils/format-utils.js";
 import "./album-card.js";
+import "./litgui-art.js";
 
 const BIO_TRUNCATE_WORDS = 200;
 
@@ -128,19 +129,6 @@ class VolumioArtistDetail extends LitElement {
         display: flex;
         align-items: center;
         justify-content: center;
-      }
-
-      .similar-art img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-      }
-
-      .similar-art litgui-icon {
-        --mdc-icon-size: 48px;
-        color: var(--secondary-text-color);
-        opacity: 0.3;
       }
 
       .similar-name {
@@ -365,9 +353,11 @@ class VolumioArtistDetail extends LitElement {
                 @keydown=${(e) => this._onSimilarKeydown(e, sim)}
               >
                 <div class="similar-art">
-                  ${art
-                    ? html`<img src="${art}" alt="${sim.artist || ""}" @error=${this._onArtError} />`
-                    : html`<litgui-icon icon="mdi:account-music"></litgui-icon>`}
+                  <litgui-art
+                    src="${art}"
+                    icon="mdi:account-music"
+                    alt="${sim.artist || ""}"
+                  ></litgui-art>
                 </div>
                 <div class="similar-name">${sim.artist || "Unknown"}</div>
               </div>
@@ -409,12 +399,6 @@ class VolumioArtistDetail extends LitElement {
       e.preventDefault();
       this._onSimilarClick(sim);
     }
-  }
-
-  _onArtError(e) {
-    const container = e.target.parentElement;
-    e.target.remove();
-    container.innerHTML = `<litgui-icon icon="mdi:account-music"></litgui-icon>`;
   }
 
   _onCardClick(e) {

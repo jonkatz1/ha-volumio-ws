@@ -17,6 +17,7 @@
  */
 import { LitElement, html, css } from "lit";
 import "./quality-badge.js";
+import "./litgui-art.js";
 
 class VolumioAlbumCard extends LitElement {
   static get properties() {
@@ -69,25 +70,8 @@ class VolumioAlbumCard extends LitElement {
       .art {
         width: 100%;
         height: 100%;
-        object-fit: cover;
-        display: block;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         transition: box-shadow 0.15s ease;
-      }
-
-      .art-placeholder {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: var(--card-background-color, #2a2a2a);
-      }
-
-      .art-placeholder litgui-icon {
-        --mdc-icon-size: 48px;
-        color: var(--secondary-text-color);
-        opacity: 0.3;
       }
 
       .play-overlay {
@@ -169,7 +153,7 @@ class VolumioAlbumCard extends LitElement {
       }
 
       /* Folder variant */
-      .card.folder .art-placeholder {
+      .card.folder .art-container {
         background: var(--divider-color, rgba(255, 255, 255, 0.08));
       }
     `;
@@ -193,17 +177,12 @@ class VolumioAlbumCard extends LitElement {
     return html`
       <div class="card ${isFolder ? "folder" : ""}" @click=${this._onClick} @contextmenu=${this._onContextMenu}>
         <div class="art-container">
-          ${this.albumart
-            ? html`<img
-                class="art"
-                src="${this.albumart}"
-                alt="${this.title}"
-                loading="lazy"
-                @error=${this._onArtError}
-              />`
-            : html`<div class="art-placeholder">
-                <litgui-icon icon="${icon}"></litgui-icon>
-              </div>`}
+          <litgui-art
+            class="art"
+            src="${this.albumart || ""}"
+            icon="${icon}"
+            alt="${this.title}"
+          ></litgui-art>
           <div class="play-overlay">
             <button class="play-btn" @click=${this._onPlay} title="Play">
               <litgui-icon icon="mdi:play"></litgui-icon>
@@ -276,15 +255,6 @@ class VolumioAlbumCard extends LitElement {
     }));
   }
 
-  _onArtError(e) {
-    // Replace broken img with placeholder
-    const container = e.target.parentElement;
-    e.target.remove();
-    const placeholder = document.createElement("div");
-    placeholder.className = "art-placeholder";
-    placeholder.innerHTML = `<litgui-icon icon="mdi:music-note"></litgui-icon>`;
-    container.prepend(placeholder);
-  }
 }
 
 customElements.define("volumio-album-card", VolumioAlbumCard);
