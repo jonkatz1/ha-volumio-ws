@@ -649,6 +649,10 @@ class VolumioPanel extends LitElement {
     this._favoritesCache = [];
     this._lastUri = null;
     this._keyHandler = this._onKeyDown.bind(this);
+    // Browser-back interception (single armed sentinel)
+    this._sentinelArmed = false;
+    this._sentinelQueued = false;
+    this._historySeeded = false;
     // Browse state
     this._browseStack = [];
     this._browseItems = [];
@@ -716,6 +720,14 @@ class VolumioPanel extends LitElement {
     this._applyBreakpoint();
     window.addEventListener("resize", this._onResize);
     window.addEventListener("keydown", this._keyHandler);
+    window.addEventListener("popstate", this._onPopState);
+    // Seed one sentinel so the very first browser-back press lands on the
+    // popstate handler instead of leaving the page. Once per page load —
+    // re-seeding on every reconnect would stack dead entries.
+    if (!this._historySeeded) {
+      this._historySeeded = true;
+      this._pushHistorySentinel();
+    }
     // Queue subscription via adapter (both modes)
     this._adapter.onQueueChange((queue) => {
       this._queue = (queue || []).filter(Boolean);
@@ -760,11 +772,50 @@ class VolumioPanel extends LitElement {
     this._adapter.disconnect();
     window.removeEventListener("resize", this._onResize);
     window.removeEventListener("keydown", this._keyHandler);
+    window.removeEventListener("popstate", this._onPopState);
   }
 
   _onResize = () => {
     this._applyBreakpoint();
   };
+
+  // ── Browser back interception ─────────────────────────────
+  // Single-armed-sentinel scheme: at most ONE foreign entry lives in the
+  // host app's history. While armed, the browser's back button pops it;
+  // the popstate handler routes to _onBack and re-arms. In-app back and
+  // search close disarm instead of popping — the stale entry stays in
+  // history but its eventual pop is recognized (armed flag false) and
+  // ignored. When _canGoBack is false the pop falls through unanswered
+  // and the next press leaves the page normally. The in-app ← button
+  // never touches history, so the two paths cannot double-fire.
+
+  _onPopState = () => {
+    // The pop itself consumed the top entry — armed or stale, it's gone.
+    const wasArmed = this._sentinelArmed;
+    this._sentinelArmed = false;
+    if (wasArmed && this._canGoBack) {
+      this._onBack();
+      // Re-arm for the next press (_onBack just disarmed; push re-arms).
+      this._pushHistorySentinel();
+    }
+  };
+
+  _pushHistorySentinel() {
+    // No-op while armed: one live sentinel, never a stack of them.
+    if (this._sentinelArmed) return;
+    // One entry per user action: a forward navigation can flow through
+    // two push sites in the same tick (_onNavigate → _enterAlbumDetail).
+    if (this._sentinelQueued) return;
+    this._sentinelQueued = true;
+    queueMicrotask(() => { this._sentinelQueued = false; });
+    try {
+      history.pushState({ litgui: true }, "");
+      this._sentinelArmed = true;
+    } catch (e) {
+      // Embedded contexts (HA panel iframe) can refuse pushState; back
+      // interception simply stays off.
+    }
+  }
 
   _applyBreakpoint() {
     this._isMobile = window.innerWidth <= 768;
@@ -1464,6 +1515,7 @@ class VolumioPanel extends LitElement {
   _onNavigate(e) {
     const { view, source, sourceUri, artist, album, pluginName } = e.detail || {};
     if (!view) return;
+    const prevView = this._activeView;
 
     if (this._isMobile) {
       this._showQueue = false;
@@ -1558,6 +1610,10 @@ class VolumioPanel extends LitElement {
         this._searchTrail = [];
         break;
     }
+
+    if (this._activeView !== prevView) {
+      this._pushHistorySentinel();
+    }
   }
 
   _onToggleNav() {
@@ -1580,6 +1636,9 @@ class VolumioPanel extends LitElement {
   }
 
   _onBack() {
+    // In-app back invalidates the armed sentinel: the entry stays in
+    // history, but its eventual pop is recognized as stale and ignored.
+    this._sentinelArmed = false;
     if (this._searchTrail.length > 0 && (this._activeView === "album-detail" || this._activeView === "artist-detail")) {
       // Pop the search trail
       if (this._searchTrail.length > 1) {
@@ -1780,6 +1839,7 @@ class VolumioPanel extends LitElement {
   }
 
   async _browseTo(uri, title) {
+    this._pushHistorySentinel();
     this._browseStack = [...this._browseStack, { uri, title }];
     await this._loadBrowseItems(uri);
   }
@@ -1888,8 +1948,11 @@ class VolumioPanel extends LitElement {
    * Single source of truth for entering artist-detail view.
    * Sets activeView, browseContext, searchTrail (if provided), kicks off
    * metadata fetch in parallel with the existing browse.
+   * pushHistory: false for backward/lateral callers (breadcrumbs) so they
+   *   don't arm a browser-back sentinel.
    */
-  _enterArtistDetail({ artist, uri, service, searchTrail }) {
+  _enterArtistDetail({ artist, uri, service, searchTrail, pushHistory = true }) {
+    if (pushHistory) this._pushHistorySentinel();
     this._activeView = "artist-detail";
     this._showNavFlyout = false;
     this._browseContext = {
@@ -1910,8 +1973,11 @@ class VolumioPanel extends LitElement {
    * skipLoad: when true, no _loadBrowseItems / _resolveAndBrowseAlbum is
    *   triggered — caller is responsible (used for context-menu go_to_album
    *   when no URI can be constructed).
+   * pushHistory: false for backward/lateral callers (breadcrumbs) so they
+   *   don't arm a browser-back sentinel.
    */
-  _enterAlbumDetail({ title, artist, albumart, uri, service, searchTrail, skipLoad }) {
+  _enterAlbumDetail({ title, artist, albumart, uri, service, searchTrail, skipLoad, pushHistory = true }) {
+    if (pushHistory) this._pushHistorySentinel();
     this._activeView = "album-detail";
     this._showNavFlyout = false;
     this._browseContext = {
@@ -2201,6 +2267,7 @@ class VolumioPanel extends LitElement {
 
   _onPlaylistSelect(e) {
     const { name, uri } = e.detail;
+    this._pushHistorySentinel();
     this._playlistDetailContext = { name, uri };
     this._activeView = "playlist-detail";
     this._loadPlaylistDetail(uri);
@@ -3143,6 +3210,9 @@ class VolumioPanel extends LitElement {
     if (!query || query.length < 2) return;
     if (!this._adapter.ready) return;
 
+    // Sentinel only when the search overlay opens (empty → non-empty),
+    // not on every keystroke refining an active search.
+    if (!this._searchQuery) this._pushHistorySentinel();
     this._searchQuery = query;
     this._searchLoading = true;
     this._searchResults = null;
@@ -3179,6 +3249,8 @@ class VolumioPanel extends LitElement {
   }
 
   _onSearchClear() {
+    // Closing search invalidates the sentinel armed when it opened.
+    this._sentinelArmed = false;
     this._searchQuery = "";
     this._searchResults = null;
     this._searchLoading = false;
@@ -3202,6 +3274,7 @@ class VolumioPanel extends LitElement {
         uri: seg.uri,
         service: seg.service || "",
         searchTrail: this._searchTrail.slice(0, index + 1),
+        pushHistory: false,
       });
     } else if (seg.view === "album-detail") {
       // Breadcrumb doesn't carry the album's artist — read from the
@@ -3214,6 +3287,7 @@ class VolumioPanel extends LitElement {
         uri: seg.uri,
         service: seg.service || "",
         searchTrail: this._searchTrail.slice(0, index + 1),
+        pushHistory: false,
       });
     }
   }
