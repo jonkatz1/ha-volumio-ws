@@ -1,6 +1,6 @@
 # LitGUI for Volumio
 
-A custom Home Assistant integration that brings Volumio's full feature set into your HA sidebar. Real-time WebSocket connection, rich panel UI, and deep automation support.
+A beautiful, audiophile-grade alternative UI for Volumio, available two ways: as a **Home Assistant integration** that brings Volumio's full feature set into your HA sidebar, and as a **standalone Volumio plugin** that runs directly on your Volumio device. Both share the same polished player UI; pick whichever fits how you listen.
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/HA-2024.7%2B-blue.svg)](https://www.home-assistant.io/)
@@ -11,6 +11,26 @@ A custom Home Assistant integration that brings Volumio's full feature set into 
 The built-in HA Volumio integration polls every 10 seconds and offers limited controls. LitGUI replaces that with a persistent WebSocket connection for instant state updates, a full sidebar panel for browsing and playback, and 22 services for automations.
 
 It runs alongside the built-in integration (different domain: `volumio_ws`) so you can migrate at your own pace.
+
+## Standalone Volumio Plugin
+
+Prefer to run LitGUI directly on your Volumio device, no Home Assistant required? The standalone plugin serves the same UI on its own port (`7777`), alongside Volumio's default interface. You can also set it as your default UI in Volumio's Appearance settings.
+
+It works on **Volumio 3 and 4**, on any hardware.
+
+**Install (available now):**
+
+SSH into your Volumio device and run:
+
+```bash
+curl -sSL https://litgui.com/install.sh | bash
+```
+
+Then enable it in **Settings → Plugins → Installed Plugins → LitGUI** (toggle on), and open `http://<your-volumio>:7777`.
+
+A Volumio plugin store listing (beta channel) is on the way.
+
+The rest of this README covers the Home Assistant integration.
 
 ## Features
 

@@ -25,6 +25,8 @@ Thumbs.db
 # Frontend build environment
 frontend/node_modules/
 frontend.zip
+# Plugin build artifacts (validation + release zips)
+*.zip
 
 # T20 working files
 t20-*.txt
