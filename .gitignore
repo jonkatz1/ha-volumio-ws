@@ -37,3 +37,11 @@ Screenshot*.png
 QUICKREF.md
 deploy.sh
 frontend/src/version.js
+
+# Cloud / Wrangler (litgui-site parity)
+.wrangler/
+.dev.vars
+
+# Node modules (any depth) + logs
+node_modules/
+*.log
